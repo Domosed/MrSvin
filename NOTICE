@@ -1,0 +1,14 @@
+MrSvin Workspace
+
+This source distribution is an independent fork of Mr. Mak Workspace:
+https://github.com/witnesstodark/mr-mak-workspace
+Base commit: c7c9fbfd0d9c4f961536392fbd50b71ff0b0c528 (0.5.1).
+
+Copyright (c) 2026 Mr. Mak Workspace contributors.
+The upstream source, documentation and included public examples retain their
+MIT license, reproduced in LICENSE.upstream-MIT. The repository's existing
+Apache 2.0 license is reproduced in LICENSE. Modified behavior and source-only
+packaging are described in PATCHES.md and SOURCE.json.
+
+Third-party components retain their own licenses and attribution. See
+THIRD_PARTY_NOTICES.md and the included component license files.

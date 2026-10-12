@@ -1,0 +1,12 @@
+{
+  "project": "MrSvin Workspace",
+  "upstream": "https://github.com/witnesstodark/mr-mak-workspace",
+  "upstreamCommit": "c7c9fbfd0d9c4f961536392fbd50b71ff0b0c528",
+  "upstreamVersion": "0.5.1",
+  "sourceVersion": "0.5.1",
+  "includedApplicationPatches": 8,
+  "starterCards": "The four public upstream samples only",
+  "privateWorkspaceImported": false,
+  "privateRuntimeImported": false,
+  "nativeBuildVerified": false
+}

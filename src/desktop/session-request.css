@@ -1,0 +1,2 @@
+/* The mark of a chat that waits for its user: "?" for a question, "!" for a permission. */
+.session-logo .session-waiting{right:-5px;top:-5px;width:12px;height:12px;font:800 9px/1 sans-serif;font-style:normal;color:#221a00;background:#ffc53d;box-shadow:0 0 0 2px #0e0f13}
