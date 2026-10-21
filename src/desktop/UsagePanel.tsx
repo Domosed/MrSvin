@@ -38,14 +38,14 @@ function Provider({ name, color, usage, weekly, empty, site, url, now }: { name:
 }
 
 export default function UsagePanel({ agents, onClose }: { agents: AgentInfo[]; onClose: () => void }) {
-  const [usage, setUsage] = useState<{ claude: ClaudeUsage; codex: Usage } | null>(null)
+  const [usage, setUsage] = useState<{ claude: ClaudeUsage; claude2: ClaudeUsage; codex: Usage } | null>(null)
   const [error, setError] = useState('')
   const [now, setNow] = useState(0)
   const generation = useRef(0)
   const invalidate = useCallback(() => { generation.current++ }, [])
   const refresh = useCallback(async () => {
     const request = ++generation.current
-    try { const result = await api<{ claude: ClaudeUsage; codex: Usage }>('/usage'); if (request === generation.current) { setUsage(result); setNow(Date.now()); setError('') } }
+    try { const result = await api<{ claude: ClaudeUsage; claude2: ClaudeUsage; codex: Usage }>('/usage'); if (request === generation.current) { setUsage(result); setNow(Date.now()); setError('') } }
     catch (error) { if (request === generation.current) setError(error instanceof Error ? error.message : String(error)) }
   }, [])
   useEffect(() => {
@@ -53,15 +53,15 @@ export default function UsagePanel({ agents, onClose }: { agents: AgentInfo[]; o
     const timer = window.setInterval(onFocus, 30000)
     return () => { invalidate(); window.removeEventListener('focus', onFocus); clearInterval(timer) }
   }, [refresh, invalidate])
-  const claude = agents.find(item => item.id === 'claude' && item.available), codex = agents.find(item => item.id === 'codex' && item.available)
+  const claudes = agents.filter(item => ['claude', 'claude2'].includes(item.id) && item.available), codex = agents.find(item => item.id === 'codex' && item.available)
   return <section className="usage-panel" aria-label="Usage">
     <header><span><Icon name="gauge" size={16} /><strong>Usage</strong></span><div>
       <button className="desk-icon" onClick={() => void refresh()} title="Refresh usage" aria-label="Refresh usage"><Icon name="refresh" size={14} /></button>
       <button className="desk-icon" onClick={onClose} aria-label="Close usage"><Icon name="close" size={16} /></button>
     </div></header>
     {error && <p className="desk-error-inline" role="alert">{error}</p>}
-    {usage && claude && <Provider name="Claude" color={claude.color} usage={usage.claude} weekly="Weekly · all models" site="claude.ai" url="https://claude.ai/settings/usage" now={now}
-      empty={usage.claude.customStatusLine ? 'Your own Claude status line is active, so Mr. Свин does not replace it to read usage.' : !usage.claude.enabled ? 'Mr. Свин cannot add its Claude status line from this installation path.' : 'Usage appears after Claude replies in a chat started or resumed here. It is available for Claude Pro and Max plans.'} />}
+    {usage && claudes.map(claude => { const limits = usage[claude.id as 'claude' | 'claude2']; return <Provider key={claude.id} name={claude.id === 'claude2' ? 'Claude 2' : 'Claude'} color={claude.color} usage={limits} weekly="Weekly · all models" site="claude.ai" url="https://claude.ai/settings/usage" now={now}
+      empty={limits.customStatusLine ? 'Your own Claude status line is active, so Mr. Свин does not replace it to read usage.' : !limits.enabled ? 'Mr. Свин cannot add its Claude status line from this installation path.' : 'Usage appears after Claude replies in a chat started or resumed here. It is available for Claude Pro and Max plans.'} /> })}
     {usage && codex && <Provider name="Codex" color={codex.color} usage={usage.codex} weekly="Weekly" site="chatgpt.com" url="https://chatgpt.com/codex/settings/usage" now={now}
       empty="Usage appears after Codex replies in a chat. It is available when Codex is signed in with a ChatGPT plan." />}
   </section>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, reportError } from './client'
 import type { ChatSession } from './types'
+import { isClaude } from './types'
 import './history-delete.css'
 
 // Deleting a chat from History always asks first. The CLI's own copy of the
@@ -9,7 +10,7 @@ export default function HistoryDelete({ item, agent }: { item: ChatSession; agen
   const [confirming, setConfirming] = useState(false)
   const [native, setNative] = useState(false)
   const [busy, setBusy] = useState(false)
-  const cli = item.agent === 'claude' || item.agent === 'codex'
+  const cli = isClaude(item.agent) || item.agent === 'codex'
   const remove = async () => {
     setBusy(true)
     // On success the service announces the removal and this row disappears.

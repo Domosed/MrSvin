@@ -10,7 +10,7 @@ export class NativeSettings {
     if (pending) { clearTimeout(pending.timer); this.pending.delete(event.requestId); event.error ? pending.reject(new Error(event.error)) : pending.resolve(this.value); }
   }
   set(winKey) {
-    if (typeof winKey !== 'boolean') throw new Error('Choose whether the Win key should show Mr. Свин.');
+    if (typeof winKey !== 'boolean') throw new Error('Choose whether the shortcut should show Mr. Свин.');
     if (!this.value.available) throw new Error('The optional system shortcut is not available.');
     if (this.pending.size) throw new Error('A shortcut change is already in progress.');
     const requestId = randomUUID();

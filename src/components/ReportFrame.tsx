@@ -19,7 +19,10 @@ function ThemedFrame({ url, onLoad, ...props }: Props) {
     if (!element) return
     // Vite serves reports on the same origin. Desktop content is isolated on a
     // second origin, whose prelude accepts theme messages only from its UI.
-    try {
+    // Only touch the document when same-origin: WebKit reports every blocked
+    // cross-origin access as an error, even inside try/catch.
+    const sameOrigin = new URL(url, location.href).origin === location.origin
+    if (sameOrigin) try {
       const doc = element.contentDocument
       if (doc?.documentElement) {
         if (!doc.querySelector('style[data-mrmak-report-theme]')) {

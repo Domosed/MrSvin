@@ -14,30 +14,31 @@ on:
           - major
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
-  release:
+  # Dependency and project scripts run here with a read-only token and no
+  # persisted credential. The tag is pushed by the separate job below.
+  checks:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-
       - name: Verify release branch
         run: |
           if [ "${GITHUB_REF_NAME}" != "main" ]; then
             echo "Releases can only be created from main. Current ref: ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
 
       - name: Run release checks
         run: |
@@ -46,6 +47,21 @@ jobs:
           npm test
           npm run test:template
           npm run build
+
+  # No dependency or project code runs in this job: it only computes the
+  # version, pushes the tag and starts the release build.
+  release:
+    runs-on: ubuntu-latest
+    needs: checks
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Compute next version
         id: version

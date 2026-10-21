@@ -14,5 +14,5 @@ export function chatActivityLabel(session: ChatSession) {
   if (working) return 'Working'
   if (session.status !== 'running') return session.status === 'starting' ? 'Starting' : 'Stopped'
   if (request) return 'Needs attention · check terminal'
-  return ['codex', 'claude', 'opencode'].includes(session.agent) ? 'Ready' : 'Terminal open'
+  return ['codex', 'claude', 'claude2', 'opencode'].includes(session.agent) ? 'Ready' : 'Terminal open'
 }

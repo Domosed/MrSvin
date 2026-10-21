@@ -1,0 +1,31 @@
+.context-meter{display:flex;flex-shrink:0}
+.context-chip{display:flex;align-items:center;gap:7px;height:22px;padding:0 8px;border:1px solid #ffffff0d;border-radius:6px;background:#ffffff05;font:500 10px var(--font-mono);color:#a6a3b1;cursor:pointer}
+.context-chip:hover,.context-chip[aria-expanded=true]{border-color:#ffffff1f;color:#e7e3ea}
+.context-chip-bar{width:42px;height:4px;border-radius:2px;background:#ffffff12;overflow:hidden}.context-chip-bar>i{display:block;height:100%;background:#8fb3ff;transition:width .3s ease}
+.context-chip.warn .context-chip-bar>i{background:#deba7e}.context-chip.high .context-chip-bar>i{background:#ec8f98}.context-chip.high{color:#f0b2b8}
+.context-chip-tokens{color:#6f7180}
+@media (max-width:640px){.context-chip-tokens{display:none}}
+.context-panel{position:absolute;top:34px;right:10px;z-index:66;width:300px;max-height:calc(100% - 44px);overflow-y:auto;scrollbar-width:thin;border:1px solid #ffffff14;border-radius:9px;background:#1a1b22;box-shadow:0 15px 45px #0009;padding:2px 14px 12px;animation:panel-in .15s ease-out}
+.context-panel>header{display:flex;align-items:center;justify-content:space-between;height:40px;margin-right:-8px}.context-panel>header strong{font-size:12px;font-weight:600;color:#e7e3ea}
+.context-total{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;font-weight:500;color:#ece6ef}.context-total>span:last-child{font:400 11px var(--font-mono);color:#8a8896}
+.context-stack{display:flex;height:6px;margin:9px 0 12px;border-radius:3px;background:#ffffff0d;overflow:hidden}.context-stack>i{display:block;height:100%;background:#8fb3ff}
+.context-stack.warn>i:only-child{background:#deba7e}.context-stack.high>i:only-child{background:#ec8f98}
+.context-categories{list-style:none;margin:0;padding:0}
+.context-categories li{display:grid;grid-template-columns:10px 1fr auto 52px;align-items:center;gap:9px;padding:5px 0;font-size:11.5px;color:#d9d5df}
+.context-categories li>i{width:10px;height:10px;border-radius:2px}
+.context-categories li>span:nth-of-type(2){font:400 11px var(--font-mono);color:#8a8896;text-align:right}
+.context-categories li>strong{font:500 11px var(--font-mono);color:#ece6ef;text-align:right}
+.context-categories li.deferred{color:#777986}.context-categories li.deferred>strong{color:#5d5f6a}
+.context-categories li.deferred:first-of-type,.context-categories li:not(.deferred)+li.deferred{margin-top:8px}
+.context-note{margin:4px 0 10px;font-size:11px;line-height:1.5;color:#9a97a5}
+.context-list{border-top:1px solid #ffffff08}.context-list:first-of-type{margin-top:8px}
+.context-list>summary{display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:11.5px;color:#d9d5df;cursor:pointer;list-style:none}
+.context-list>summary::-webkit-details-marker{display:none}.context-list>summary::before{content:'›';width:14px;color:#80808f;transition:transform .15s}.context-list[open]>summary::before{transform:rotate(90deg)}
+.context-list>summary>span{flex:1}.context-list>summary>small{font:400 11px var(--font-mono);color:#8a8896}
+.context-list ul{list-style:none;margin:0 0 8px;padding:0 0 0 14px;max-height:220px;overflow-y:auto;scrollbar-width:thin}
+.context-list li{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:10.5px;color:#b9b4c2}
+.context-list li>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.context-list li small{margin-left:6px;color:#6f7180}
+.context-list li>span:last-child{flex-shrink:0;font-family:var(--font-mono);color:#8a8896}
+.context-panel>footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #ffffff08;font-size:10px;color:#80808f}
+.context-refresh{display:flex;align-items:center;gap:5px;flex-shrink:0;height:24px;padding:0 9px;border:1px solid #ffffff17;border-radius:6px;background:#ffffff08;font-size:11px;color:#e2b6cb}
+.context-refresh:hover:not(:disabled){background:#ffffff12;color:#f3cadb}.context-refresh:disabled{opacity:.45;cursor:default}

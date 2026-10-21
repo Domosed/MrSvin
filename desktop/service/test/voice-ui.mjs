@@ -1,10 +1,10 @@
 // No microphone, paid model request, native terminal or personal workspace is used.
-import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { copyFile, cp, mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createService } from '../server.mjs';
+import { launchBrowser } from './browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 await mkdir(path.join(root, '.cache'), { recursive: true });
@@ -28,13 +28,14 @@ service.quick.ask = async () => null;
 const imageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvWQAAAAASUVORK5CYII=';
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
+  browser = await launchBrowser();
   const page = await browser.newPage({ viewport: { width: 650, height: 800 } });
   page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
     window.fixtureMicRequests = 0;
-    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { window.fixtureMicRequests++; throw new DOMException('Permission denied', 'NotAllowedError'); } });
+    // Patch the prototype: WebKit ignores an own-property override on navigator.mediaDevices.
+    MediaDevices.prototype.getUserMedia = async () => { window.fixtureMicRequests++; throw new DOMException('Permission denied', 'NotAllowedError'); };
   });
   for (const surface of ['chats', 'workspace']) {
     await page.goto(service.urls[surface]);

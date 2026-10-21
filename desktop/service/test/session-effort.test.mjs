@@ -18,7 +18,7 @@ test('new and imported chats default to xhigh; explicit efforts survive saving a
   sessions.launch = session => { launches.push(session.effort); };
   const expected = new Map();
   try {
-    for (const agent of ['codex', 'claude']) {
+    for (const agent of ['codex', 'claude', 'claude2', 'antigravity']) {
       for (const effort of [undefined, 'medium', 'high', 'xhigh', 'max']) {
         const created = await sessions.create({ agent, name: 'Terminal Effort', effort });
         const wanted = effort || 'xhigh';

@@ -1,11 +1,11 @@
 // Real renderer + service snapshots, with a deterministic fullscreen CLI fixture.
 // No live chats, agent logins or user settings are changed.
-import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createService } from '../server.mjs';
+import { clipboardPermissions, launchBrowser } from './browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const repo = await mkdtemp(path.join(root, '.cache/scroll-ui-'));
@@ -37,8 +37,8 @@ for (const [id, agent, fullscreen] of [['codex', 'codex', false], ['claude-class
 }
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
-  const context = await browser.newContext({ viewport: { width: 640, height: 800 }, permissions: ['clipboard-read', 'clipboard-write'] });
+  browser = await launchBrowser();
+  const context = await browser.newContext({ viewport: { width: 640, height: 800 }, permissions: clipboardPermissions });
   const page = await context.newPage(); page.setDefaultTimeout(6000);
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.goto(service.urls.chats);
@@ -70,7 +70,7 @@ try {
   // Copy and ordinary typing still use the existing agent-chat rules.
   await page.locator('.xterm-helper-textarea').focus();
   await page.evaluate(() => navigator.clipboard.writeText('copy sentinel'));
-  await page.keyboard.press('Control+c');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+c' : 'Control+c');
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'copy sentinel');
   assert.equal(writes.get('opencode-fullscreen').some(x => x.includes('\x03')), false);
   await page.keyboard.type('draft');

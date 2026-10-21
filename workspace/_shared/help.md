@@ -37,14 +37,37 @@ contains the cards, reports, previews and files they produce. You can minimize
 either window independently while continuing in a browser, Blender or another app.
 
 Drag chat tabs to reorder them. Pinned tabs stay ahead of ordinary tabs, and can
-be reordered within their own group. Use History to find and pin conversations
-you want to return to. Closing a tab and deleting a project's files are separate
+be reordered among themselves. Group tabs by project: choose a group in New chat,
+or right-click a tab to add it to an existing group or start a new one. Grouped
+tabs sit together behind a header chip; click the chip to collapse or expand the
+group, drag it to move the whole group, right-click it to rename or delete the
+group or choose its color, and drop a tab on a chip to move it there. History's
+group filters find an old group and delete it; the chats stay. A tab's right-click menu also holds rename, pin, tab color and close. Use History to find and pin
+conversations you want to return to. Closing a tab and deleting a project's files are separate
 actions. Conversation recovery also depends on the selected CLI's native history.
+
+## Edit a card yourself
+
+Choose **+ New card** in Workspace to start a Gallery or Research page. Use
+**Edit** to add images, Markdown notes, saved prompts, source links and statuses.
+Drag the order chips, or use the arrow buttons, to reorder entries. Switch
+between Gallery and Research without losing the content.
+
+**Preview** shows your draft; **Save** writes it to the project's `.card.json`
+file. An agent can work with that same file. If it changes while you are editing,
+the editor keeps your draft and asks you to review the latest version. Save
+before closing the app. Previous saved contents are kept locally in
+`.mrmak/card-backups/`.
+
+The starter's My Dream Game and Creative MCP Connections include editable example
+tabs. Existing custom HTML pages keep their layouts. Phone access can read the
+new cards; their editor is available in the desktop Workspace.
 
 ## Files and previews
 
 **Files** shows the actual project folders. Main folders is a focused view;
-All files shows the wider tree. Hover a folder to reveal its Explorer shortcut.
+All files shows the wider tree. Hover a folder to reveal its Explorer shortcut
+(Finder on macOS, your file manager on Linux).
 Select a file to preview it. Images can be enlarged and downloaded, and Markdown
 opens with **Preview** and **Edit** modes. Save only when you want to change the file.
 
@@ -62,8 +85,9 @@ image saves it in `inbox/` and inserts that path. This gives the agent an input;
 it does not automatically publish or upload it to a service.
 
 Within Files, dragging a file to another project folder moves it; dropping it
-back in the same place does nothing. Delete moves a selected item to the Windows
-Recycle Bin. Use Explorer for folder moves and other full filesystem operations.
+back in the same place does nothing. Delete (⌘⌫ on macOS) moves a selected item
+to the Windows Recycle Bin (the Trash on macOS and Linux). Use Explorer, Finder
+or your file manager for folder moves and other full filesystem operations.
 
 ## Skills and MCP: what is the difference?
 
@@ -101,18 +125,23 @@ The current choices are visible in Settings and in the agent or provider setup.
 
 | Control | Behavior |
 | --- | --- |
-| Ctrl+C in an agent chat | Copy selected terminal text; it does not interrupt the agent |
-| Ctrl+Shift+C | Copy selected terminal text |
-| Ctrl+C in PowerShell | Normal shell interrupt behavior |
-| Ctrl+V in a chat | Paste text or a clipboard screenshot |
-| Ctrl+S while editing Markdown | Save the document |
+| Ctrl+C in an agent chat (Windows, Linux) | Copy selected terminal text; it does not interrupt the agent |
+| Ctrl+Shift+C (Windows, Linux) | Copy selected terminal text |
+| Ctrl+C in PowerShell or a Linux shell chat | Normal shell interrupt behavior |
+| ⌘C in any chat (macOS) | Copy selected terminal text |
+| Ctrl+C in any chat (macOS) | Sent to the CLI, as in Terminal.app: it interrupts the agent or shell |
+| Ctrl+V in a chat (⌘V on macOS) | Paste text or a clipboard screenshot |
+| Ctrl+S while editing Markdown (⌘S or Ctrl+S on macOS) | Save the document |
 | Escape in an image preview | Close the enlarged image |
-| Optional Win-key recall | Bring back open Mr. Mak windows; configurable in Settings |
-| Ctrl+Esc | Open Windows Start |
+| Optional Win-key recall (Windows) | Bring back open Mr. Mak windows; configurable in Settings. macOS has its own recall shortcut in Settings > Shortcut |
+| Ctrl+Esc (Windows) | Open Windows Start |
 
 Settings also contains terminal text size and appearance, the default agent,
-new-chat permission defaults and voice choices. A CLI permission setting affects
-what that agent can do on your machine; choose it deliberately for your workflow.
+new-chat permission defaults and voice choices. On macOS, Option types your
+keyboard layout's characters in chats; Settings > Chats > Use Option as Meta
+key turns it into a Meta key.
+A CLI permission setting affects what that agent can do on your machine; choose
+it deliberately for your workflow.
 
 ## Keep the Workspace understandable
 

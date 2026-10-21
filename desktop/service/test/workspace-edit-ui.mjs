@@ -1,11 +1,12 @@
 // Real built UI and isolated service; never mutates the user's Workspace.
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createService } from '../server.mjs';
 import { localDay } from '../workspace.mjs';
+import { launchBrowser } from './browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 await mkdir(path.join(root, '.cache'), { recursive: true });
@@ -20,9 +21,10 @@ await cp(path.join(root, 'public', 'assets'), path.join(root, 'dist', 'assets'),
 const service = await createService({ repo, uiDir: path.join(root, 'dist') });
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
+  browser = await launchBrowser();
   const context = await browser.newContext({ viewport: { width: 1100, height: 820 } });
   const page = await context.newPage(), peer = await context.newPage();
+  page.setDefaultTimeout(15000); peer.setDefaultTimeout(15000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(service.urls.workspace); await peer.goto(service.urls.workspace);
   const homeCard = page.locator('.home [data-card="sample"]');
@@ -72,7 +74,9 @@ try {
   await row.getByRole('link').click();
   await page.frameLocator('iframe.report-frame').getByRole('heading', { name: 'Project notes' }).waitFor();
   await page.locator('.topbar').getByRole('button', { name: 'Edit Character Workshop: Done' }).click();
-  await menu.getByRole('button', { name: 'Active', exact: true }).click();
+  // Let the save land before reloading; WebKit cancels in-flight requests on reload.
+  const saved = page.waitForResponse(response => response.url().includes('/api/workspace/entities/sample') && response.request().method() === 'PATCH');
+  await menu.getByRole('button', { name: 'Active', exact: true }).click(); await saved;
   await page.reload();
   await expect(page.locator('.topbar').getByRole('button', { name: 'Edit Character Workshop: Active' })).toBeVisible();
   for (const theme of ['dark', 'light']) {

@@ -7,12 +7,17 @@
       "type": "group",
       "category": "project",
       "created": "2026-09-15",
-      "updated": "2026-09-15",
+      "updated": "2026-10-20",
       "folder": "2026-09-15_my-dream-game",
       "steps": [
         {
           "name": "Mr. Mak 64",
           "path": "index.html"
+        },
+        {
+          "name": "Editable references",
+          "path": "references.card.json",
+          "viewer": "card"
         }
       ],
       "status": "active",
@@ -27,7 +32,7 @@
       "type": "group",
       "category": "research",
       "created": "2026-09-15",
-      "updated": "2026-09-16",
+      "updated": "2026-10-20",
       "folder": "2026-09-15_creative-mcp",
       "steps": [
         {
@@ -37,6 +42,11 @@
         {
           "name": "Connect a tool",
           "path": "connect.md"
+        },
+        {
+          "name": "Editable research",
+          "path": "notes.card.json",
+          "viewer": "card"
         }
       ],
       "status": "active",
@@ -83,39 +93,39 @@
       "folder": "2026-09-15_arachne-character",
       "steps": [
         {
-          "name": "Version 1 · Creature concepts",
+          "name": "Version 1 \u00b7 Creature concepts",
           "path": "report.html"
         },
         {
-          "name": "Version 2 · A stronger premise",
+          "name": "Version 2 \u00b7 A stronger premise",
           "path": "report_v2.html"
         },
         {
-          "name": "Version 3 · Four directions",
+          "name": "Version 3 \u00b7 Four directions",
           "path": "report_v3.html"
         },
         {
-          "name": "Version 4 · Targeted refinement",
+          "name": "Version 4 \u00b7 Targeted refinement",
           "path": "report_v4.html"
         },
         {
-          "name": "Version 5 · Arachne exploration",
+          "name": "Version 5 \u00b7 Arachne exploration",
           "path": "report_v5.html"
         },
         {
-          "name": "Version 6 · Style refinement",
+          "name": "Version 6 \u00b7 Style refinement",
           "path": "report_v6.html"
         },
         {
-          "name": "Version 7 · The mixed direction",
+          "name": "Version 7 \u00b7 The mixed direction",
           "path": "report_v7.html"
         },
         {
-          "name": "Version 8 · A coherent queen",
+          "name": "Version 8 \u00b7 A coherent queen",
           "path": "report_v8.html"
         },
         {
-          "name": "Version 9 · Palette studies",
+          "name": "Version 9 \u00b7 Palette studies",
           "path": "report_v9.html"
         },
         {

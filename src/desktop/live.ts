@@ -133,7 +133,8 @@ export class LiveVoice {
     this.microphone?.getTracks().forEach(track => track.stop()); this.microphone = null
     this.channel?.close(); this.channel = null; this.peer?.close(); this.peer = null
     this.audio.pause(); this.audio.srcObject = null
-    api('/live/release', { clientId }).catch(() => {})
+    // keepalive: cleanup also runs on pagehide, and WebKit cancels ordinary requests from a closing page.
+    api('/live/release', { clientId }, undefined, { keepalive: true }).catch(() => {})
   }
 }
 

@@ -6,7 +6,7 @@ export interface WorkspaceStep {
    * selected by file extension. `compare3d` = a Compare3DManifest JSON and
    * the step renders the side-by-side 3D viewer instead.
    */
-  viewer?: 'compare3d'
+  viewer?: 'compare3d' | 'card'
 }
 
 export interface WorkspaceEntity {

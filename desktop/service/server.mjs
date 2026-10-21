@@ -6,15 +6,16 @@ import { execFile } from 'node:child_process';
 import { WebSocketServer, WebSocket } from 'ws';
 import { parse as parseEnv } from 'dotenv';
 import { Sessions } from './sessions.mjs';
-import { Coordinator } from './coordinator.mjs';
+import { Coordinator, openChatArguments } from './coordinator.mjs';
 import { Files, serveFile } from './files.mjs';
 import { importFile, dragFiles, moveFile, recyclePath, MAX_FILE_BYTES } from './file-transfers.mjs';
 import { inventory } from './agents.mjs';
 import { Attachments, attachmentText, MAX_IMAGE_BYTES } from './attachments.mjs';
 import { ContextLibrary } from './context.mjs';
-import { taskTitle } from './titles.mjs';
+import { groupLabel, taskTitle } from './titles.mjs';
 import { taskEffort } from './effort.mjs';
 import { Workspace, localDay, metadataPatch } from './workspace.mjs';
+import { CardDocuments } from './card-documents.mjs';
 import { QuickActions } from './quick-actions.mjs';
 import { defaultVoiceStyle, voiceSession } from './voice-profile.mjs';
 import { NativeSettings } from './native-settings.mjs';
@@ -28,13 +29,24 @@ import { body, equalSecret, json, publicError, readJson, realFile, saveJson, sec
 import { ProjectAdapterRegistry } from './project-adapters/registry.mjs';
 import { KnowledgeManager, MarkdownKnowledgeProvider } from './knowledge/providers.mjs';
 import { IntegrationManager } from './integrations/manager.mjs';
+import { MobileDictation } from './mobile-dictation.mjs';
 import { MobileGateway } from './mobile.mjs';
+import { ConversationTranscripts } from './mobile-transcript.mjs';
+import { ConversationMedia } from './conversation-media.mjs';
+import { projectKey, recentProjects } from './recent-projects.mjs';
+import { answerPrompt, readPrompt } from './terminal-prompt.mjs';
+import { rewindToMessage } from './message-edit.mjs';
+import { LocalReadAloud } from './local-read-aloud.mjs';
+import { Handoffs } from './handoff.mjs';
+import { chatCommands } from './chat-commands.mjs';
+import { ContextUsage } from './context-usage.mjs';
 
 const listen = server => new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`)); });
 
 export async function createService({ repo, uiDir, stateDir, token = secret(), native = () => {}, restoreSessions = false, mcpOptions, mobileOptions, claudeUsageOptions, codexHome, usageAlerts = false, openLink = openInAlternateBrowser, restartApp, deleteNative }) {
   repo = await realpath(repo);
   stateDir ||= path.join(repo, '.mrmak');
+  const dictation = mobileOptions?.dictation || new MobileDictation(repo);
   const files = new Files(repo);
   const attachments = new Attachments(repo);
   const library = new ContextLibrary(repo);
@@ -45,17 +57,34 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   const integrations = await new IntegrationManager(stateDir).init();
   const mcp = new McpInventory(repo, mcpOptions);
   const claudeUsage = new ClaudeUsage(repo, stateDir, claudeUsageOptions);
+  const claude2Usage = new ClaudeUsage(repo, stateDir, { ...claudeUsageOptions, agent: 'claude2' });
   const codexUsage = new CodexUsage(codexHome);
   // A limit usually resets while the user is away from the app, so it is announced on the desktop.
-  const alerts = new UsageAlerts(stateDir, { Claude: claudeUsage, Codex: codexUsage }, (title, text) => {
+  const alerts = new UsageAlerts(stateDir, { Claude: claudeUsage, 'Claude 2': claude2Usage, Codex: codexUsage }, (title, text) => {
     const command = notificationCommand(title, text);
     execFile(command.file, command.args, processSpawnOptions(), () => { /* Best effort. */ });
   });
   if (usageAlerts) alerts.start();
-  const sessions = await new Sessions(repo, stateDir, { claudeUsage }).init();
+  const sessions = await new Sessions(repo, stateDir, { claudeUsage, claude2Usage }).init();
+  const transcripts = new ConversationTranscripts(stateDir);
+  const contextUsage = new ContextUsage({ sessions, stateDir, folders: { claude: claudeUsage.contextDir, claude2: claude2Usage.contextDir } });
+  const conversationMedia = new ConversationMedia();
+  const readAloud = mobileOptions?.readAloud || new LocalReadAloud(repo);
   const environment = parseEnv(await readFile(path.join(repo, '.env'), 'utf8').catch(() => ''));
   const settingsPath = path.join(stateDir, 'settings.json');
-  let settings = { defaultAgent: 'codex', defaultBypass: false, coordinatorModel: environment.MRMAK_COORDINATOR_MODEL?.trim() || null, terminalFontSize: 13, terminalAppearance: 'focus', workspaceTheme: 'dark', coordinatorEffort: 'medium', voiceName: 'cedar', voiceStyle: defaultVoiceStyle, ...await readJson(settingsPath, {}) };
+  const savedSettings = await readJson(settingsPath, null);
+  let settings = { defaultAgent: 'codex', defaultBypass: false, coordinatorModel: environment.MRMAK_COORDINATOR_MODEL?.trim() || null, terminalFontSize: 13, terminalAppearance: 'original', workspaceTheme: 'dark', coordinatorEffort: 'medium', voiceName: 'cedar', voiceStyle: defaultVoiceStyle, handoffAfter: 40, groupTabsByProject: false, systemEvents: 'compact', ...savedSettings };
+  if (await dictation.initializeProvider?.(settings, savedSettings !== null)) await saveJson(settingsPath, settings);
+  dictation.providerChoice = () => settings.transcribeProvider || null;
+  const chooseDictation = async provider => {
+    if (!['local', 'openai', 'openrouter', 'off'].includes(provider)) throw Object.assign(new Error('Choose a supported speech-to-text provider.'), { status: 400 });
+    settings.transcribeProvider = provider; await saveSettings();
+    const info = await dictation.status();
+    broadcast('settings', { settings }); broadcast('dictation', { dictation: info });
+    mobile?.broadcast({ type: 'dictation', dictation: info });
+    return info;
+  };
+  const projectList = () => recentProjects({ repo, sessions: sessions.list(), pinned: settings.pinnedProjects || [] });
   let selectedId = sessions.active().some(item => item.id === settings.selectedId) ? settings.selectedId : sessions.active()[0]?.id || null;
   let workspaceRoute = settings.workspaceRoute || null;
   let settingsTimer;
@@ -77,12 +106,14 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   const focus = id => { sessions.get(id); selectedId = id; settings.selectedId = id; scheduleSettings(); show('chats', { sessionId: id }); return { selectedId: id }; };
   const registry = async () => readJson(path.join(repo, 'workspace', 'workspace.json'), { entities: [] });
   const workspace = new Workspace(repo, () => broadcast('workspace-changed', {}));
-  const history = query => sessions.list().filter(item => !query || `${item.name} ${item.agent} ${item.cwd} ${item.preview || ''}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => Number(b.pinned) - Number(a.pinned) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  const cards = new CardDocuments(workspace);
+  const history = query => sessions.list().filter(item => !query || `${item.name} ${item.agent} ${item.cwd} ${item.preview || ''}`.normalize('NFC').toLowerCase().includes(query.normalize('NFC').toLowerCase())).sort((a, b) => Number(b.pinned) - Number(a.pinned) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
   const closeChat = async id => {
     await sessions.remove(id);
     if (selectedId === id) { selectedId = sessions.active()[0]?.id || null; settings.selectedId = selectedId; scheduleSettings(); broadcast('selection', { selectedId }); }
     return { closed: true, savedInHistory: true };
   };
+  const handoffs = new Handoffs({ repo, sessions, transcripts, opened: id => focus(id), changed: (id, handoff) => broadcast('handoff', { id, handoff }) });
   const attach = async (id, paths, coordinator = false) => {
     const session = sessions.get(id);
     const verified = await attachments.paths(paths);
@@ -97,13 +128,14 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
       switch (name) {
         case 'list_chats': return sessions.active();
         case 'search_history': return history(args.query || '').slice(0, 70);
+        case 'list_projects': { const query = String(args.query || '').toLowerCase(); return (await projectList()).filter(item => `${item.name} ${item.path}`.toLowerCase().includes(query)).slice(0, 40); }
         case 'reopen_chat': { const session = await sessions.resume(args.id); focus(session.id); return session; }
         case 'close_chat': return closeChat(args.id);
         case 'pin_chat': return sessions.pin(args.id, args.pinned);
         case 'open_chat': {
-          if (args.bypass != null && typeof args.bypass !== 'boolean') throw new Error('Choose a valid chat permission setting.');
+          args = openChatArguments(args);
           if (args.bypass === true && settings.defaultBypass !== true) throw new Error('To enable bypass, choose it yourself in New chat or Settings. Mr. Свин cannot raise the selected permission level.');
-          const session = await sessions.create({ ...args, name: taskTitle(args.name), effort: taskEffort(latestRequest, args.effort), bypass: args.bypass === false ? false : settings.defaultBypass === true });
+          const session = await sessions.create({ agent: args.agent, cwd: args.cwd, name: taskTitle(args.name), effort: taskEffort(latestRequest, args.effort), bypass: args.bypass === false ? false : settings.defaultBypass === true });
           focus(session.id); return session;
         }
         case 'read_chat': return sessions.read(args.id);
@@ -179,10 +211,16 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
     try {
       const url = new URL(request.url, origin);
       if (request.headers.host !== new URL(origin).host) throw Object.assign(new Error('Unexpected host'), { status: 403 });
-      if (url.pathname === '/health') return json(response, 200, { service: 'mrmak', version: '0.5.1' });
+      if (url.pathname === '/health') return json(response, 200, { service: 'mrmak', version: '0.6.0' });
+      // An <img> cannot send the bearer token. Its unguessable, short-lived grant
+      // is issued only through an authorized messages request for this chat.
+      const media = /^\/media\/([a-f0-9-]{36})\/([a-zA-Z0-9_-]{43})$/.exec(url.pathname);
+      if (media && ['GET', 'HEAD'].includes(request.method)) return await conversationMedia.serve(request, response, media[1], media[2], 'desktop', url.searchParams.get('download') === '1');
       if (url.pathname.startsWith('/api/')) {
         authorize(request);
         const method = request.method;
+        const cardImage = /^\/api\/workspace\/cards\/([^/]+)\/(\d+)\/images$/.exec(url.pathname);
+        if (method === 'POST' && cardImage) return json(response, 201, await cards.image(decodeURIComponent(cardImage[1]), Number(cardImage[2]), request, url.searchParams.get('name')));
         if (method === 'POST' && url.pathname === '/api/files/import') {
           if (Number(request.headers['content-length']) > MAX_FILE_BYTES) throw Object.assign(new Error('Choose files of 1 GB or less.'), { status: 413 });
           const result = await importFile(request, url.searchParams.get('folder'), url.searchParams.get('name'));
@@ -195,7 +233,10 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
           for await (const chunk of request) { length += chunk.length; if (length > MAX_IMAGE_BYTES) throw Object.assign(new Error('Choose an image smaller than 25 MB.'), { status: 413 }); chunks.push(chunk); }
           return json(response, 201, await attachments.save(Buffer.concat(chunks), decodeURIComponent(request.headers['x-file-name'] || 'Screenshot')));
         }
-        const data = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) ? await body(request, url.pathname === '/api/files/markdown' ? 12 * 1024 * 1024 : 256 * 1024) : {};
+        if (method === 'GET' && url.pathname === '/api/dictation') return json(response, 200, await dictation.status());
+        if (method === 'POST' && url.pathname === '/api/transcribe') return json(response, 200, await dictation.transcribe(request, 'desktop', () => !closing));
+        const data = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) ? await body(request, url.pathname === '/api/files/markdown' ? 12 * 1024 * 1024 : url.pathname.startsWith('/api/workspace/cards') ? 2 * 1024 * 1024 : 256 * 1024) : {};
+        if (method === 'POST' && url.pathname === '/api/dictation') return json(response, 200, await chooseDictation(data.provider));
         if (method === 'GET' && url.pathname === '/api/mobile') return json(response, 200, mobile.status());
         if (method === 'GET' && url.pathname === '/api/mobile/check') return json(response, 200, await mobile.transport.probe());
         if (method === 'POST' && url.pathname === '/api/mobile/enable') return json(response, 200, await mobile.enable());
@@ -208,6 +249,10 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
           return json(response, 200, { repo, contentBase: `${files.origin}/view/${files.repoGrant}`, agents: inventory(), sessions: sessions.list(), settings, selectedId, notices, coordinator: coordinator.state, voice: { configured: !!(keys.OPENAI_API_KEY || keys.OPENAI_KEY || process.env.OPENAI_API_KEY), owner: voiceOwner }, voiceHistory, operations: [...coordinator.operations.values(), ...quick.operations.values()].sort((a, b) => a.at.localeCompare(b.at)).slice(-30) });
         }
         if (method === 'GET' && url.pathname === '/api/workspace') return json(response, 200, await registry());
+        if (method === 'POST' && url.pathname === '/api/workspace/cards') return json(response, 201, await cards.create(data));
+        const cardDocument = /^\/api\/workspace\/cards\/([^/]+)\/(\d+)$/.exec(url.pathname);
+        if (cardDocument && method === 'GET') return json(response, 200, await cards.read(decodeURIComponent(cardDocument[1]), Number(cardDocument[2])));
+        if (cardDocument && method === 'PUT') return json(response, 200, await cards.save(decodeURIComponent(cardDocument[1]), Number(cardDocument[2]), data));
         const cardMetadata = url.pathname.match(/^\/api\/workspace\/entities\/([^/]+)$/);
         if (method === 'PATCH' && cardMetadata) return json(response, 200, await workspace.update(decodeURIComponent(cardMetadata[1]), metadataPatch(data)));
         if (method === 'GET' && url.pathname === '/api/projects') {
@@ -226,9 +271,28 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
         if (method === 'POST' && url.pathname === '/api/integrations/bind') return json(response, 200, await integrations.bind(data));
         if (method === 'GET' && url.pathname === '/api/native/settings') return json(response, 200, nativeSettings.value);
         if (method === 'GET' && url.pathname === '/api/mcp') return json(response, 200, await mcp.list());
-        if (method === 'GET' && url.pathname === '/api/usage') return json(response, 200, { claude: await claudeUsage.read(), codex: await codexUsage.read() });
+        if (method === 'GET' && url.pathname === '/api/usage') return json(response, 200, { claude: await claudeUsage.read(), claude2: await claude2Usage.read(), codex: await codexUsage.read() });
         if (method === 'POST' && url.pathname === '/api/mcp/check') return json(response, 200, await mcp.check(data.id));
         if (method === 'POST' && url.pathname === '/api/native/settings') return json(response, 200, await nativeSettings.set(data.winKey));
+        if (method === 'GET' && url.pathname === '/api/recent-projects') return json(response, 200, await projectList());
+        if (method === 'POST' && url.pathname === '/api/recent-projects/pin') {
+          const project = (await projectList()).find(item => typeof data.path === 'string' && projectKey(item.path) === projectKey(data.path));
+          if (!project || typeof data.pinned !== 'boolean') throw new Error('Choose a project from the list.');
+          const others = (settings.pinnedProjects || []).filter(item => projectKey(item) !== projectKey(project.path));
+          settings.pinnedProjects = data.pinned ? [...others, project.path].slice(-30) : others;
+          await saveSettings(); broadcast('settings', { settings });
+          return json(response, 200, await projectList());
+        }
+        if (method === 'GET' && url.pathname === '/api/read-aloud') return json(response, 200, await readAloud.status());
+        if (method === 'POST' && url.pathname === '/api/preview/show') {
+          // A link in a chat may be relative to that chat's working folder.
+          const base = typeof data.sessionId === 'string' ? sessions.get(data.sessionId).cwd : repo;
+          if (typeof data.path !== 'string' || !data.path.trim() || /[\x00-\x1f]/.test(data.path)) throw new Error('Choose a local file or folder.');
+          const target = await realpath(path.resolve(base, data.path));
+          if ((await stat(target)).isDirectory()) { native({ type: 'reveal', path: target }); return json(response, 200, { shown: 'folder', path: target }); }
+          const preview = await files.preview(target); show('workspace', { preview });
+          return json(response, 200, { shown: 'preview', path: preview.path });
+        }
         if (method === 'GET' && url.pathname === '/api/history') return json(response, 200, history(url.searchParams.get('q') || ''));
         if (method === 'POST' && url.pathname === '/api/history/import') return json(response, 201, await sessions.importConversation(data));
         if (method === 'GET' && url.pathname === '/api/files') return json(response, 200, await files.list(url.searchParams.get('path') || repo, url.searchParams.get('mode') || 'main', url.searchParams.get('q') || ''));
@@ -262,16 +326,77 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
           if (typeof data.defaultBypass === 'boolean') settings.defaultBypass = data.defaultBypass;
           if (Number.isInteger(data.terminalFontSize) && data.terminalFontSize >= 10 && data.terminalFontSize <= 24) settings.terminalFontSize = data.terminalFontSize;
           if (['focus', 'original'].includes(data.terminalAppearance)) settings.terminalAppearance = data.terminalAppearance;
+          if (typeof data.terminalOptionMeta === 'boolean') settings.terminalOptionMeta = data.terminalOptionMeta;
+          if (Number.isInteger(data.handoffAfter) && (data.handoffAfter === 0 || (data.handoffAfter >= 10 && data.handoffAfter <= 500))) settings.handoffAfter = data.handoffAfter;
+          if (['full', 'compact', 'hidden'].includes(data.systemEvents)) settings.systemEvents = data.systemEvents;
           if (['dark', 'light', 'system'].includes(data.workspaceTheme)) settings.workspaceTheme = data.workspaceTheme;
           if (['medium', 'high'].includes(data.coordinatorEffort)) settings.coordinatorEffort = data.coordinatorEffort;
           if (['cedar', 'marin'].includes(data.voiceName)) settings.voiceName = data.voiceName;
+          if (data.groupColors && typeof data.groupColors === 'object' && !Array.isArray(data.groupColors)) settings.groupColors = Object.fromEntries(Object.entries(data.groupColors).filter(([name, value]) => name.length <= 60 && typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)).slice(0, 200).map(([name, value]) => [name, value.toLowerCase()]));
+          if (Array.isArray(data.collapsedGroups)) settings.collapsedGroups = [...new Set(data.collapsedGroups.filter(item => typeof item === 'string' && item.length <= 60))].slice(0, 200);
           await saveSettings(); broadcast('settings', { settings }); return json(response, 200, settings);
         }
         if (method === 'POST' && url.pathname === '/api/sessions') { const session = await sessions.create({ ...data, bypass: data.bypass ?? settings.defaultBypass }); await integrations.publish('session', { event: 'started', session }); focus(session.id); return json(response, 201, session); }
+        if (method === 'POST' && url.pathname === '/api/groups/move') return json(response, 200, await sessions.moveGroup(data.group, data.pinned, data.targetId, data.position));
+        if (method === 'POST' && url.pathname === '/api/groups/rename') {
+          // A renamed group keeps its color and collapsed state; merging into an
+          // existing group keeps that group's.
+          const from = groupLabel(data.from), to = groupLabel(data.to);
+          const merging = sessions.list().some(item => item.group === to);
+          const result = await sessions.renameGroup(from, to);
+          if (from !== to) {
+            const { [from]: color, ...colors } = settings.groupColors || {};
+            settings.groupColors = color && !merging ? { ...colors, [to]: color } : colors;
+            const collapsed = settings.collapsedGroups || [];
+            settings.collapsedGroups = [...new Set(collapsed.filter(item => item !== from).concat(collapsed.includes(from) && !merging ? [to] : []))];
+            await saveSettings(); broadcast('settings', { settings });
+          }
+          return json(response, 200, result);
+        }
+        if (method === 'POST' && url.pathname === '/api/groups/delete') {
+          // The group's color and collapsed state go with it; the chats stay.
+          const name = groupLabel(data.name);
+          const result = await sessions.deleteGroup(name);
+          const colors = { ...(settings.groupColors || {}) }; delete colors[name];
+          settings.groupColors = colors;
+          settings.collapsedGroups = (settings.collapsedGroups || []).filter(item => item !== name);
+          await saveSettings(); broadcast('settings', { settings });
+          return json(response, 200, result);
+        }
         const sessionRoute = /^\/api\/sessions\/([\w-]+)(?:\/(\w+))?$/.exec(url.pathname);
         if (sessionRoute) {
           const [, id, action] = sessionRoute;
           if (method === 'GET' && action === 'screen') return json(response, 200, await sessions.read(id));
+          if (method === 'GET' && action === 'messages') {
+            const session = sessions.get(id);
+            const value = await conversationMedia.present(await transcripts.read(session), session, 'desktop', grant => `/media/${session.id}/${grant}`);
+            return json(response, 200, { ...value, prompt: session.process ? await readPrompt(sessions, id) : null });
+          }
+          if (method === 'GET' && action === 'commands') { const session = sessions.get(id); return json(response, 200, await chatCommands(session.agent, session.cwd, { ...mcpOptions, stateDir })); }
+          if (method === 'GET' && action === 'stats') {
+            const { supported, userMessages = 0, truncated = false, model = null } = await transcripts.read(sessions.get(id));
+            return json(response, 200, { supported, userMessages, truncated, model, handoff: handoffs.state(id) });
+          }
+          if (method === 'GET' && action === 'context') return json(response, 200, await contextUsage.read(sessions.get(id)));
+          if (method === 'POST' && action === 'context') return json(response, 200, await contextUsage.refresh(id));
+          if (method === 'POST' && action === 'handoff') return json(response, 200, handoffs.start(id));
+          if (method === 'POST' && action === 'prompt') return json(response, 200, await answerPrompt(sessions, id, data.id, data.choice));
+          if (method === 'POST' && action === 'rewind') return json(response, 200, await rewindToMessage(sessions, transcripts, id, String(data.messageId || '')));
+          if (method === 'POST' && action === 'speak') {
+            const controller = new AbortController(), abort = () => controller.abort();
+            sessions.get(id); response.once('close', abort);
+            try {
+              const audio = await readAloud.synthesize('desktop', data, controller.signal);
+              response.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': audio.length, 'Cache-Control': 'no-store' }); response.end(audio); return;
+            } finally { response.off('close', abort); }
+          }
+          if (method === 'POST' && action === 'send') {
+            // One prompt: the text and any attached paths are pasted together, then submitted.
+            const session = sessions.get(id), text = typeof data.text === 'string' ? data.text : '';
+            const paths = Array.isArray(data.paths) && data.paths.length ? await attachments.paths(data.paths) : [];
+            if (!text.trim() && !paths.length) throw new Error('Write a message or attach a file.');
+            return json(response, 200, sessions.input(id, `${text}${paths.length ? `${text ? '\n' : ''}${attachmentText(paths, session.agent)}` : ''}`, { coordinator: true, submit: true }));
+          }
           if (method === 'POST' && action === 'focus') return json(response, 200, focus(id));
           if (method === 'POST' && action === 'stop') return json(response, 200, sessions.stop(id));
           if (method === 'POST' && action === 'resume') { const session = await sessions.resume(id, data.nativeId); focus(id); return json(response, 200, session); }
@@ -282,13 +407,13 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
             if (sessions.get(id).open) await closeChat(id);
             // The CLI's copy goes first: if that fails, the chat stays in History for another attempt.
             const { agent, cwd, nativeId } = sessions.get(id);
-            const native = data.native === true && nativeId ? await deleteNative({ agent, cwd, nativeId }) : null;
+            const native = data.native === true && nativeId ? await deleteNative({ agent, cwd, nativeId }, { stateDir }) : null;
             await sessions.delete(id);
             return json(response, 200, { deleted: true, native });
           }
           if (method === 'POST' && action === 'reorder') return json(response, 200, await sessions.reorder(id, data.targetId, data.position));
           if (method === 'POST' && action === 'input') return json(response, 200, sessions.input(id, data.text, { coordinator: data.paste !== false, submit: data.submit !== false }));
-          if (method === 'PATCH' && !action) return json(response, 200, typeof data.pinned === 'boolean' ? sessions.pin(id, data.pinned) : 'tabColor' in data ? sessions.color(id, data.tabColor) : sessions.rename(id, data.name));
+          if (method === 'PATCH' && !action) return json(response, 200, typeof data.pinned === 'boolean' ? sessions.pin(id, data.pinned) : 'tabColor' in data ? sessions.color(id, data.tabColor) : 'group' in data ? await sessions.assign(id, data.group) : sessions.rename(id, data.name));
           if (method === 'DELETE' && !action) return json(response, 200, await closeChat(id));
         }
         if (method === 'POST' && url.pathname === '/api/window') {
@@ -356,7 +481,7 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   });
   const origin = await listen(server);
   files.uiOrigin = origin;
-  mobile = await new MobileGateway({ ...mobileOptions, repo, uiDir, stateDir, sessions, attachments, closeChat, settings: () => settings, changed: state => broadcast('mobile-state', { mobile: state }) }).init();
+  mobile = await new MobileGateway({ ...mobileOptions, transcripts, readAloud, dictation, chooseDictation, repo, uiDir, stateDir, sessions, attachments, closeChat, settings: () => settings, changed: state => broadcast('mobile-state', { mobile: state }) }).init();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url, origin);
@@ -393,13 +518,13 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   try { watcher = watch(path.join(repo, 'workspace', 'workspace.json'), () => broadcast('workspace-changed', {})); watcher.on('error', () => {}); } catch { /* Registry may be created after first setup. */ }
   const restoreTimer = restoreSessions ? setTimeout(() => sessions.restore().catch(error => sessions.emit('service-error', error)), 100) : null;
   return {
-    origin, contentOrigin: files.origin, token, sessions, coordinator, quick, workspace, files, projects, knowledge, integrations, mobile,
+    origin, contentOrigin: files.origin, token, sessions, coordinator, quick, workspace, cards, files, projects, knowledge, integrations, mobile,
     urls: { workspace: `${origin}/?desktop=1&surface=workspace&token=${token}`, chats: `${origin}/?desktop=1&surface=chats&token=${token}` },
       nativeMessage: event => nativeSettings.receive(event),
       async close() {
         if (closing) return; closing = true; mcp.close(); nativeSettings.close(); alerts.stop(); await files.writes.catch(() => {});
       watcher?.close(); clearTimeout(restoreTimer); coordinator.close(); clearTimeout(settingsTimer); await saveSettings(); await transcriptSave; await quick.saves; await workspace.writes;
-      await mobile.close();
+      dictation.close(); await mobile.close();
       for (const ws of wss.clients) ws.terminate();
       wss.close(); await sessions.close();
       server.closeAllConnections(); contentServer.closeAllConnections();

@@ -37,7 +37,8 @@ test('multiple folder, document and image paths reach a real terminal once witho
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { attached: paths, submitted: false });
     assert.equal(writes.length, 1);
-    assert.ok(writes[0].includes("Bob''s $notes`draft.md"));
+    // Quotes inside single-quoted paths: '' in PowerShell, '\'' in zsh/bash.
+    assert.ok(writes[0].includes(process.platform === 'win32' ? "Bob''s $notes`draft.md" : "Bob'\\''s $notes`draft.md"));
     assert.ok(writes[0].includes("First folder' '"));
     assert.ok(writes[0].includes('Вторая папка'));
     assert.equal(/[\r\n\x1b]/.test(writes[0]), false);

@@ -83,8 +83,9 @@ test('Claude chats get the usage status line unless the user configured their ow
 
   if (inventory().find(item => item.id === 'claude')?.available) {
     const command = terminalCommand('claude', { settings });
-    const script = process.platform === 'win32' ? Buffer.from(command.args.at(-1), 'base64').toString('utf16le') : command.args.join(' ');
-    assert.ok(script.includes(`--settings' '${settings}`) || script.includes(`--settings ${settings}`));
+    // A native claude.exe starts directly; a script shim goes through an encoded PowerShell command.
+    if (command.args.includes('-EncodedCommand')) assert.ok(Buffer.from(command.args.at(-1), 'base64').toString('utf16le').includes(`--settings' '${settings}`));
+    else assert.equal(command.args[command.args.indexOf('--settings') + 1], settings);
   }
 });
 

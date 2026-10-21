@@ -29,6 +29,20 @@ test('MCP sources preserve agent precedence without exposing credentials or URL 
   for (const secret of ['password','secret-path','url-secret','header-secret','codex-secret','invisible']) assert.equal(JSON.stringify(result).includes(secret), false);
 });
 
+test('Antigravity MCP definitions show project precedence and redact remote URLs and credentials', async () => {
+  const { repo, home, json, inventory } = await fixture();
+  await mkdir(path.join(home, '.gemini/config'), { recursive: true });
+  await mkdir(path.join(repo, '.agents'), { recursive: true });
+  await json(path.join(home, '.gemini/config/mcp_config.json'), { mcpServers: { tools: { serverUrl: 'https://global.example/private-global', disabled: true } } });
+  await json(path.join(repo, '.agents/mcp_config.json'), { mcpServers: { tools: { serverUrl: 'https://local.example/private-project?key=private-secret', headers: { Authorization: 'private-header' } } } });
+  const result = await inventory.list();
+  const server = result.servers.find(item => item.client === 'antigravity');
+  assert.equal(server.scope, 'project'); assert.equal(server.enabled, true);
+  assert.equal(server.transport, 'http'); assert.equal(server.endpoint, 'https://local.example');
+  assert.equal(server.sources.length, 2); assert.equal(server.canCheck, true);
+  assert.doesNotMatch(JSON.stringify(result), /private-global|private-project|private-secret|private-header/);
+});
+
 test('MCP discovery distinguishes declared disabled plugins, missing programs, keys and project approval', async () => {
   const { repo, home, json, inventory } = await fixture();
   await json(path.join(repo, '.mcp.json'), { mcpServers: {

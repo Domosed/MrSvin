@@ -1,11 +1,14 @@
 // Run after npm run build. Isolated browser, repository and fake PTYs; no agent
 // login, live conversation, Windows shortcut or production setting is touched.
-import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createService } from '../server.mjs';
+import { clipboardPermissions, launchBrowser } from './browser.mjs';
+// Desktop key conventions: Cmd on macOS, Ctrl elsewhere (src/desktop/platform.ts).
+const mac = process.platform === 'darwin';
+const copyKey = mac ? 'Meta+c' : 'Control+c';
 import { inventory } from '../agents.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -34,8 +37,8 @@ for (const agent of ['codex', 'claude', 'opencode', 'kimi', 'shell']) {
 }
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
-  const context = await browser.newContext({ viewport: { width: 900, height: 800 }, permissions: ['clipboard-read', 'clipboard-write'] });
+  browser = await launchBrowser();
+  const context = await browser.newContext({ viewport: { width: 900, height: 800 }, permissions: clipboardPermissions });
   const page = await context.newPage(); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(service.urls.workspace + '#/test/0');
@@ -94,7 +97,7 @@ try {
   const usageAgents = inventory().filter(item => ['claude', 'codex'].includes(item.id) && item.available).map(item => item.id);
   if (usageAgents.length) await page.getByRole('button', { name: 'Usage', exact: true }).click();
   if (usageAgents.includes('claude')) {
-    await page.getByText(/Usage appears after Claude replies/).waitFor();
+    await page.getByRole('group', { name: 'Claude usage', exact: true }).getByText(/Usage appears after Claude replies/).waitFor();
     const resetsAt = Math.floor(Date.now() / 1000) + 2 * 3600 + 14 * 60 + 10;
     await writeFile(path.join(repo, '.mrmak/claude-usage.json'), JSON.stringify({ fiveHour: { usedPercentage: 42, resetsAt }, sevenDay: { usedPercentage: 91, resetsAt: resetsAt + 3 * 86400 }, spendLimit: null, updatedAt: new Date().toISOString() }));
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
@@ -149,16 +152,23 @@ try {
     await page.locator('.xterm-rows').filter({ hasText: 'Fixture line' }).waitFor();
     if (agent !== 'shell') {
       await screen.hover(); const before = await page.locator('.xterm-rows').innerText(); await page.mouse.wheel(0, -420);
-      await page.waitForFunction(previous => document.querySelector('.xterm-rows')?.textContent !== previous, before);
+      await page.waitForFunction(previous => (document.querySelector('.xterm-rows'))?.innerText !== previous, before);
       assert.notEqual(await page.locator('.xterm-rows').innerText(), before, 'Agent wheel scroll must move history even with mouse reporting enabled');
       await page.evaluate(() => navigator.clipboard.writeText('clipboard sentinel'));
-      await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press('Control+c');
+      await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press(copyKey);
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'clipboard sentinel');
-      // Shift overrides terminal mouse tracking so a row can be selected.
-      await page.keyboard.down('Shift'); await screen.click({ position: { x: 120, y: 30 }, clickCount: 3 }); await page.keyboard.up('Shift');
-      await page.keyboard.press('Control+c');
+      // Shift (Option on macOS) overrides terminal mouse tracking so a row can be selected.
+      const selectKey = mac ? 'Alt' : 'Shift';
+      await page.keyboard.down(selectKey); await screen.click({ position: { x: 120, y: 30 }, clickCount: 3 }); await page.keyboard.up(selectKey);
+      await page.keyboard.press(copyKey);
       assert.match(await page.evaluate(() => navigator.clipboard.readText()), /Fixture line/);
-      assert.ok(writes.get(agent).every(data => !data.includes('\x03')), `${agent}: Ctrl+C must never reach PTY`);
+      assert.ok(writes.get(agent).every(data => !data.includes('\x03')), `${agent}: the copy shortcut must never reach PTY`);
+      if (mac) {
+        // macOS: Cmd+C copies; Ctrl+C is the CLI's own interrupt, as in Terminal.app.
+        await page.keyboard.press('Control+c');
+        for (let i = 0; i < 20 && !writes.get(agent).includes('\x03'); i++) await new Promise(resolve => setTimeout(resolve, 20));
+        assert.ok(writes.get(agent).includes('\x03'), `${agent}: Ctrl+C reaches the CLI on macOS`);
+      }
     } else {
       await page.locator('.xterm-helper-textarea').focus(); await page.keyboard.press('Control+c');
       for (let i = 0; i < 20 && !writes.get(agent).includes('\x03'); i++) await new Promise(resolve => setTimeout(resolve, 20));

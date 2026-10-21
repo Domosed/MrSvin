@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process';
 import { readFile, rm, stat, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { codexBinary } from './agents.mjs';
 import { claudeTranscript } from './native-events.mjs';
+import { claudeConfigDir, isClaude } from './claude-profiles.mjs';
 import { codexHome, codexTranscript } from './codex-history.mjs';
 import { processSpawnOptions } from './platform.mjs';
 
@@ -33,9 +33,9 @@ async function dropHistory(file, belongs) {
   return { removed, kept };
 }
 
-async function deleteClaude(session) {
-  const root = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), id = session.nativeId;
-  const transcript = await claudeTranscript(session.cwd, id);
+async function deleteClaude(session, stateDir) {
+  const root = claudeConfigDir(session.agent, { stateDir }), id = session.nativeId;
+  const transcript = await claudeTranscript(session.cwd, id, root);
   let files = 0;
   // Each of these is named after this one session ID.
   for (const target of [transcript, transcript.slice(0, -'.jsonl'.length), path.join(root, 'file-history', id), path.join(root, 'session-env', id), path.join(root, 'uploads', id)]) files += await remove(target);
@@ -63,9 +63,9 @@ async function deleteCodex(session, runCodex) {
   return { files: transcript ? 1 : 0, prompts: removed.length };
 }
 
-export async function deleteNativeConversation(session, { runCodex = codexDelete } = {}) {
-  if (!['claude', 'codex'].includes(session?.agent)) throw Object.assign(new Error('Only Claude and Codex conversations can be deleted from here.'), { status: 400 });
+export async function deleteNativeConversation(session, { runCodex = codexDelete, stateDir } = {}) {
+  if (!isClaude(session?.agent) && session?.agent !== 'codex') throw Object.assign(new Error('Only Claude and Codex conversations can be deleted from here.'), { status: 400 });
   // The ID becomes part of file paths, so nothing but a session UUID is accepted.
   if (!uuid.test(session.nativeId || '')) throw Object.assign(new Error('This chat has no CLI conversation that can be deleted from here.'), { status: 400 });
-  return { agent: session.agent, ...await (session.agent === 'claude' ? deleteClaude(session) : deleteCodex(session, runCodex)) };
+  return { agent: session.agent, ...await (isClaude(session.agent) ? deleteClaude(session, stateDir) : deleteCodex(session, runCodex)) };
 }

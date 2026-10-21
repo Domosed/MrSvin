@@ -108,8 +108,11 @@ test('QR navigation opens only the app shell; cross-site APIs, frames and socket
     assert.equal(shell.status, 200); assert.match(shell.body, /Mobile fixture/);
     assert.equal(shell.headers['x-frame-options'], 'DENY');
   }
+  // Android Home Screen launch observed as navigate + empty destination.
+  assert.equal((await get('/mobile/', { ...navigation, 'Sec-Fetch-Dest': 'empty' })).status, 200);
   for (const headers of [
     { ...navigation, 'Sec-Fetch-Dest': 'iframe' },
+    { ...navigation, 'Sec-Fetch-Dest': 'empty', 'Sec-Fetch-Mode': 'cors' },
     { ...navigation, 'Sec-Fetch-Mode': 'cors' },
     { ...navigation, Origin: 'https://unrelated.example' },
     { ...navigation, Host: 'unrelated.example' },
@@ -118,6 +121,7 @@ test('QR navigation opens only the app shell; cross-site APIs, frames and socket
   // Even a paired phone's cookie cannot turn cross-site requests into API access.
   for (const pathname of ['/mobile/api/bootstrap', '/mobile/events', '/mobile/manifest.webmanifest', '/assets/app.js']) {
     assert.equal((await get(pathname, { ...navigation, Cookie: device.cookie })).status, 403);
+    assert.equal((await get(pathname, { ...navigation, 'Sec-Fetch-Dest': 'empty', Cookie: device.cookie })).status, 403);
   }
   const qr = await gateway.newPairing();
   assert.equal((await request('/pair', { token: qr.code }, undefined, { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
@@ -184,6 +188,12 @@ test('report grants are limited to the selected folder, sandboxed and revoked wi
   await writeFile(path.join(repo, 'workspace/other/private.html'), 'Unrelated document');
   await writeFile(path.join(repo, 'workspace/workspace.json'), JSON.stringify({ entities: [{ id: 'example', title: 'Example', folder: 'example', steps: [{ name: 'Report', path: 'report.html' }] }] }));
   const opened = await request('/reports/open', { entityId: 'example', step: 0 }, device.cookie); assert.equal(opened.status, 200);
+  assert.equal(opened.data.statePersistence, true);
+  const token = opened.data.url.split('/')[3], grant = gateway.reports.grants.get(token);
+  grant.expires = Date.now() + 1000;
+  const renewed = await request('/reports/open', { entityId: 'example', step: 0 }, device.cookie);
+  assert.equal(renewed.data.url, opened.data.url, 'Renewing a valid grant keeps the same document URL');
+  assert.ok(gateway.reports.grants.get(token).expires > Date.now() + 20 * 60 * 1000);
   const url = `${gateway.origin}${opened.data.url}`;
   const response = await fetch(url, { headers: { Origin: 'null' } }); assert.equal(response.status, 200);
   const policy = response.headers.get('content-security-policy');
@@ -254,4 +264,76 @@ test('Tailscale setup preserves other routes and refuses a public Funnel route',
   await transport.disable({ hostname: 'pc.example.ts.net', port: 8443, target: 'http://127.0.0.1:12345' }); assert.equal(calls.length, 1);
   config.AllowFunnel = { 'pc.example.ts.net:8444': true };
   await assert.rejects(transport.enable('http://127.0.0.1:12346', saved), /publicly shared/);
+});
+
+test('a Tailscale Serve failure gives advice for this operating system only', async () => {
+  const transport = new TailscaleTransport();
+  transport.probe = async () => ({ ready: true, hostname: 'pc.example.ts.net' });
+  transport.config = async () => ({});
+  transport.command = async () => { throw new Error('serve failed'); };
+  const error = await transport.enable('http://127.0.0.1:12345').catch(value => value);
+  assert.match(error.message, /Enable HTTPS for this device/);
+  assert.equal(/Windows/.test(error.message), process.platform === 'win32');
+  assert.equal(/Tailscale app is running/.test(error.message), process.platform === 'darwin');
+});
+
+
+test('conversation images require pairing and grants belong to the requesting phone and chat', async t => {
+  const { gateway, request, pair, repo, id, session } = await fixture(t);
+  session.cwd = repo;
+  const image = path.join(repo, 'shared.png');
+  const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jvWQAAAAASUVORK5CYII=', 'base64');
+  await writeFile(image, bytes);
+  gateway.transcripts.read = async () => ({ supported: true, messages: [{ id: 'image', role: 'assistant', text: '', at: '', imageRefs: [image] }] });
+  const device = await pair();
+  const result = await request(`/sessions/${id}/messages`, undefined, device.cookie);
+  assert.equal(result.status, 200);
+  assert.equal(result.data.messages[0].imageRefs, undefined);
+  const url = gateway.origin + result.data.messages[0].images[0].url;
+  assert.equal((await fetch(url)).status, 401);
+  assert.equal((await fetch(url, { headers: { Cookie: device.cookie, Origin: 'https://untrusted.example' } })).status, 403);
+  const response = await fetch(url, { headers: { Cookie: device.cookie } });
+  assert.equal(response.status, 200); assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+  const download = await fetch(url + '?download=1', { headers: { Cookie: device.cookie } });
+  assert.match(download.headers.get('content-disposition'), /^attachment;/);
+  const second = await pair();
+  assert.equal((await fetch(url, { headers: { Cookie: second.cookie } })).status, 404);
+  assert.equal((await fetch(url.replace(/media\/[^/]+$/, 'media/' + 'a'.repeat(43)), { headers: { Cookie: device.cookie } })).status, 404);
+  await gateway.revoke(device.pending.id);
+  assert.equal((await fetch(url, { headers: { Cookie: device.cookie } })).status, 401);
+});
+
+
+test('fixed voice generation requires a paired same-origin session and revokes with the phone', async t => {
+  const { gateway, request, pair, id } = await fixture(t), calls = [];
+  gateway.readAloud = { status: async () => ({ available: true }), synthesize: async (device, data) => { calls.push({ device, ...data }); return Buffer.from('RIFFtestWAVE'); }, revoke() {}, close() {} };
+  const device = await pair(), route = `/sessions/${id}/read-aloud`;
+  assert.equal((await request(route, { voice: 'am_michael', text: 'hello' })).status, 401);
+  assert.equal((await request(route, { voice: 'am_michael', text: 'hello' }, device.cookie, { Origin: 'https://untrusted.example' })).status, 403);
+  const response = await fetch(gateway.origin + '/mobile/api' + route, { method: 'POST', headers: { Cookie: device.cookie, Origin: gateway.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ voice: 'bf_emma', text: 'A test reply.' }) });
+  assert.equal(response.status, 200); assert.equal(response.headers.get('content-type'), 'audio/wav');
+  assert.equal(response.headers.get('cache-control'), 'no-store'); assert.equal((await response.text()), 'RIFFtestWAVE');
+  assert.equal(calls.length, 1); assert.equal(calls[0].voice, 'bf_emma');
+  await gateway.revoke(device.pending.id);
+  assert.equal((await request(route, { voice: 'am_michael', text: 'hello' }, device.cookie)).status, 401);
+});
+
+test('a phone starts chats only in a listed project folder', async t => {
+  const { inventory } = await import('../agents.mjs');
+  const agent = inventory().find(item => item.id !== 'shell' && item.available);
+  if (!agent) { t.skip('No agent CLI is installed on this machine.'); return; }
+  const { gateway, request, pair, repo, session } = await fixture(t), device = await pair();
+  const prior = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, CODEX_HOME: process.env.CODEX_HOME }, home = await mkdtemp(path.join(os.tmpdir(), 'mrmak-cli-home-'));
+  process.env.CLAUDE_CONFIG_DIR = home; process.env.CODEX_HOME = home;
+  t.after(() => { for (const [name, value] of Object.entries(prior)) if (value === undefined) delete process.env[name]; else process.env[name] = value; });
+  const project = path.join(repo, 'Game'); await mkdir(project);
+  session.cwd = project;
+  const created = []; gateway.sessions.create = async options => { created.push(options.cwd); return session; };
+  const projects = (await request('/projects', undefined, device.cookie)).data;
+  assert.deepEqual(projects.map(item => item.path), [repo, project]);
+  assert.equal((await request('/sessions', { agent: agent.id, name: 'Game chat', cwd: project }, device.cookie)).status, 201);
+  assert.equal((await request('/sessions', { agent: agent.id, name: 'Default chat' }, device.cookie)).status, 201);
+  const outside = await request('/sessions', { agent: agent.id, name: 'Elsewhere', cwd: os.tmpdir() }, device.cookie);
+  assert.equal(outside.status, 400); assert.match(outside.data.error, /project from the list/);
+  assert.deepEqual(created, [project, repo]);
 });

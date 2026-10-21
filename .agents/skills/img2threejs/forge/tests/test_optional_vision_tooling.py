@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +14,12 @@ SPEC = importlib.util.spec_from_file_location("run_vision_adapter", MODULE_PATH)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+ADAPTER_SPEC = importlib.util.spec_from_file_location(
+    "reference_vision", ROOT.parent / "integrations" / "vision" / "reference_vision.py"
+)
+assert ADAPTER_SPEC and ADAPTER_SPEC.loader
+ADAPTER = importlib.util.module_from_spec(ADAPTER_SPEC)
+ADAPTER_SPEC.loader.exec_module(ADAPTER)
 
 
 class OptionalVisionToolingTests(unittest.TestCase):
@@ -44,6 +52,35 @@ class OptionalVisionToolingTests(unittest.TestCase):
         project = (ROOT.parent / "integrations" / "vision" / "pyproject.toml").read_text(encoding="utf-8")
         for dependency in ("mediapipe", "torch", "transformers"):
             self.assertIn(f'"{dependency}', project)
+
+    def test_models_are_pinned_to_immutable_versions(self) -> None:
+        for revision in (ADAPTER.SAM_REVISION, ADAPTER.DEPTH_REVISION):
+            self.assertRegex(revision, r"^[0-9a-f]{40}$")
+        for url in (ADAPTER.FACE_MODEL_URL, ADAPTER.POSE_MODEL_URL):
+            self.assertNotIn("/latest/", url)
+        source = Path(ADAPTER.__file__).read_text(encoding="utf-8")
+        calls = re.findall(r"from_pretrained\((.*?)\)", source, flags=re.DOTALL)
+        self.assertEqual(len(calls), 8)
+        for call in calls:
+            self.assertIn("revision=", call)
+
+    def test_download_refuses_a_model_with_another_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            upstream = Path(directory) / "upstream.task"
+            upstream.write_bytes(b"model")
+            expected = hashlib.sha256(b"model").hexdigest()
+            saved = Path(directory) / "models" / "saved.task"
+            record = ADAPTER._download(upstream.as_uri(), saved, expected)
+            self.assertEqual(record["sha256"], expected)
+
+            refused = Path(directory) / "models" / "refused.task"
+            with self.assertRaises(RuntimeError):
+                ADAPTER._download(upstream.as_uri(), refused, "0" * 64)
+            self.assertFalse(refused.exists())
+
+            saved.write_bytes(b"replaced")
+            with self.assertRaises(RuntimeError):
+                ADAPTER._download(upstream.as_uri(), saved, expected)
 
 
 if __name__ == "__main__":

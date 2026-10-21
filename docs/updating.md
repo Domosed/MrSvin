@@ -19,6 +19,11 @@ as separate concerns.
    and let the owner choose Quit; do not close their app from an agent process.
 7. The owner runs the newly built local installer and starts MrSvin again.
 
+On Windows, `Setup.ps1 -Mode Update` combines steps 5 to 7. Run it in a separate
+Windows PowerShell window opened from Start, outside MrSvin: it builds the current
+source, waits until the owner quits MrSvin, installs the build silently into the
+MrSvin install folder and starts MrSvin again. It never stops running processes.
+
 An agent chat inside the app ends when the app quits. Finish the foreground
 answer first, record a clear handoff, and let the owner reopen the saved chat.
 Saved conversations still depend on their native CLI histories. A compiled

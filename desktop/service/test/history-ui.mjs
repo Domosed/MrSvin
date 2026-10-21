@@ -1,11 +1,11 @@
 // Exercise the actual History -> resume -> close -> restart flow with isolated
 // native metadata and deterministic terminals. No user chats or logins are used.
-import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createService } from '../server.mjs';
+import { launchBrowser } from './browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 await mkdir(path.join(root, '.cache'), { recursive: true });
@@ -37,7 +37,7 @@ async function start() {
 }
 try {
   await start();
-  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
+  browser = await launchBrowser();
   const page = await browser.newPage({ viewport: { width: 640, height: 800 } });
   page.setDefaultTimeout(6000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));

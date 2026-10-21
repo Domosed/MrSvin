@@ -16,7 +16,19 @@ async function transaction<T>(mode: IDBTransactionMode, action: (store: IDBObjec
     tx.onerror = tx.onabort = () => { db.close(); reject(new Error('Could not save the recording on this phone.')) }
   })
 }
-export const readVoiceDraft = (chat: string) => transaction<VoiceDraft | undefined>('readonly', store => store.get(chat))
-export const saveVoiceDraft = (chat: string, draft: VoiceDraft) => transaction('readwrite', store => store.put(draft, chat))
+// Recordings are stored as bytes, not Blobs: Safari's Private Browsing (and
+// Playwright's WebKit) cannot keep Blobs in IndexedDB but can keep ArrayBuffers.
+type StoredDraft = Omit<VoiceDraft, 'audio'> & { audio?: Blob; bytes?: ArrayBuffer; type?: string }
+export async function readVoiceDraft(chat: string): Promise<VoiceDraft | undefined> {
+  const stored = await transaction<StoredDraft | undefined>('readonly', store => store.get(chat))
+  if (!stored) return undefined
+  const { bytes, type, audio, ...rest } = stored
+  return { ...rest, audio: audio ?? new Blob(bytes ? [bytes] : [], { type: type || '' }) }
+}
+export async function saveVoiceDraft(chat: string, draft: VoiceDraft) {
+  const { audio, ...rest } = draft
+  const stored: StoredDraft = { ...rest, bytes: await audio.arrayBuffer(), type: audio.type }
+  return transaction('readwrite', store => store.put(stored, chat))
+}
 export const deleteVoiceDraft = (chat: string) => transaction('readwrite', store => store.delete(chat))
 export const clearVoiceDrafts = () => transaction('readwrite', store => store.clear())

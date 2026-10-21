@@ -1,10 +1,11 @@
 // Isolated application state and browser profiles; no real chats or preferences.
-import { chromium, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { mkdtemp, mkdir, writeFile, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createService } from '../server.mjs';
+import { launchBrowser } from './browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 await mkdir(path.join(root, '.cache'), { recursive: true });
@@ -20,7 +21,7 @@ await writeFile(path.join(repo, 'workspace/workspace.json'), JSON.stringify({ en
 let service, browser;
 try {
   service = await createService({ repo, uiDir: path.join(root, 'dist') });
-  browser = await chromium.launch({ channel: process.env.MRMAK_TEST_BROWSER || 'msedge', headless: true });
+  browser = await launchBrowser();
   const context = await browser.newContext({ viewport: { width: 1300, height: 920 }, colorScheme: 'dark' });
   const page = await context.newPage(), second = await context.newPage(), chats = await context.newPage();
   const errors = []; for (const view of [page, second, chats]) { view.setDefaultTimeout(12000); view.on('pageerror', error => errors.push(error.message)); }
@@ -66,6 +67,7 @@ try {
   await page.getByRole('button', { name: 'Toggle settings', exact: true }).click();
   await page.getByLabel('Workspace theme', { exact: true }).selectOption('system');
   await expect(page.locator('html')).toHaveAttribute('data-workspace-theme', 'dark');
+  await page.bringToFront();
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-workspace-theme', 'light');
   await page.getByLabel('Workspace theme', { exact: true }).selectOption('light');

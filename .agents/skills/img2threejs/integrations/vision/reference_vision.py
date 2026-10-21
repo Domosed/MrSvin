@@ -25,14 +25,19 @@ DEFAULT_MODELS = DEFAULT_RUNTIME / "models"
 DEFAULT_HF_CACHE = DEFAULT_RUNTIME / "huggingface"
 SAM_MODEL = "facebook/sam2.1-hiera-tiny"
 DEPTH_MODEL = "depth-anything/Depth-Anything-V2-Small-hf"
+# Full Hub commits, so a changed upstream branch cannot swap the weights or config.
+SAM_REVISION = "de431c4043854a71d8101e17995dfe596bf101a5"
+DEPTH_REVISION = "5426e4f0f36572d16453bbda7a8389317b1bef99"
 FACE_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
-    "face_landmarker/float16/latest/face_landmarker.task"
+    "face_landmarker/float16/1/face_landmarker.task"
 )
+FACE_MODEL_SHA256 = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
 POSE_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    "pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
 )
+POSE_MODEL_SHA256 = "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"
 
 
 def _sha256(path: Path) -> str:
@@ -78,7 +83,9 @@ def command_health(args: argparse.Namespace) -> int:
         "packages": _versions(),
         "models": {
             "sam2": SAM_MODEL,
+            "sam2Revision": SAM_REVISION,
             "depth": DEPTH_MODEL,
+            "depthRevision": DEPTH_REVISION,
             "faceTask": str(Path(args.models_dir) / "face_landmarker.task"),
             "poseTask": str(Path(args.models_dir) / "pose_landmarker_lite.task"),
         },
@@ -90,16 +97,25 @@ def command_health(args: argparse.Namespace) -> int:
     return 0
 
 
-def _download(url: str, destination: Path) -> dict[str, Any]:
+def _download(url: str, destination: Path, expected_sha256: str) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists():
         with urllib.request.urlopen(url, timeout=180) as response:
-            destination.write_bytes(response.read())
+            data = response.read()
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != expected_sha256:
+            raise RuntimeError(f"{url} has SHA-256 {actual}, expected {expected_sha256}; nothing was saved")
+        destination.write_bytes(data)
+    actual = _sha256(destination)
+    if actual != expected_sha256:
+        raise RuntimeError(
+            f"{destination} has SHA-256 {actual}, expected {expected_sha256}; delete it and run prefetch again"
+        )
     return {
         "url": url,
         "path": str(destination),
         "bytes": destination.stat().st_size,
-        "sha256": _sha256(destination),
+        "sha256": actual,
     }
 
 
@@ -111,10 +127,16 @@ def command_prefetch(args: argparse.Namespace) -> int:
     models_dir.mkdir(parents=True, exist_ok=True)
     hf_cache.mkdir(parents=True, exist_ok=True)
 
-    sam_processor = Sam2Processor.from_pretrained(SAM_MODEL, cache_dir=hf_cache, use_fast=False)
-    sam_model = Sam2Model.from_pretrained(SAM_MODEL, cache_dir=hf_cache)
-    depth_processor = AutoImageProcessor.from_pretrained(DEPTH_MODEL, cache_dir=hf_cache, use_fast=False)
-    depth_model = AutoModelForDepthEstimation.from_pretrained(DEPTH_MODEL, cache_dir=hf_cache)
+    sam_processor = Sam2Processor.from_pretrained(
+        SAM_MODEL, revision=SAM_REVISION, cache_dir=hf_cache, use_fast=False
+    )
+    sam_model = Sam2Model.from_pretrained(SAM_MODEL, revision=SAM_REVISION, cache_dir=hf_cache)
+    depth_processor = AutoImageProcessor.from_pretrained(
+        DEPTH_MODEL, revision=DEPTH_REVISION, cache_dir=hf_cache, use_fast=False
+    )
+    depth_model = AutoModelForDepthEstimation.from_pretrained(
+        DEPTH_MODEL, revision=DEPTH_REVISION, cache_dir=hf_cache
+    )
 
     payload = {
         "status": "ok",
@@ -131,8 +153,8 @@ def command_prefetch(args: argparse.Namespace) -> int:
                 "revision": getattr(depth_model.config, "_commit_hash", None)
                 or getattr(depth_processor, "_commit_hash", None),
             },
-            "faceTask": _download(FACE_MODEL_URL, models_dir / "face_landmarker.task"),
-            "poseTask": _download(POSE_MODEL_URL, models_dir / "pose_landmarker_lite.task"),
+            "faceTask": _download(FACE_MODEL_URL, models_dir / "face_landmarker.task", FACE_MODEL_SHA256),
+            "poseTask": _download(POSE_MODEL_URL, models_dir / "pose_landmarker_lite.task", POSE_MODEL_SHA256),
         },
         "boundary": "downloaded models produce priors/evidence only",
     }
@@ -159,12 +181,14 @@ def command_segment(args: argparse.Namespace) -> int:
     device = _device_name(torch)
     processor = Sam2Processor.from_pretrained(
         SAM_MODEL,
+        revision=SAM_REVISION,
         cache_dir=args.hf_cache,
         local_files_only=True,
         use_fast=False,
     )
     model = Sam2Model.from_pretrained(
         SAM_MODEL,
+        revision=SAM_REVISION,
         cache_dir=args.hf_cache,
         local_files_only=True,
     ).to(device)
@@ -224,12 +248,14 @@ def command_depth(args: argparse.Namespace) -> int:
     device = _device_name(torch)
     processor = AutoImageProcessor.from_pretrained(
         DEPTH_MODEL,
+        revision=DEPTH_REVISION,
         cache_dir=args.hf_cache,
         local_files_only=True,
         use_fast=False,
     )
     model = AutoModelForDepthEstimation.from_pretrained(
         DEPTH_MODEL,
+        revision=DEPTH_REVISION,
         cache_dir=args.hf_cache,
         local_files_only=True,
     ).to(device)

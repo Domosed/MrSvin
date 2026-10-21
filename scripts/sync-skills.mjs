@@ -15,6 +15,8 @@ async function visit(relative = '') {
   for (const entry of await readdir(path.join(source, relative), { withFileTypes: true })) {
     if (entry.name.startsWith('.') || ['__pycache__', 'node_modules'].includes(entry.name)) continue;
     const name = path.join(relative, entry.name);
+    // Downloaded vision models and logs are local runtime state, not skill source.
+    if (name.replaceAll('\\', '/') === 'img2threejs/runtime') continue;
     if (entry.isDirectory()) { await visit(name); continue; }
     if (!entry.isFile() || /\.(?:pyc|pyo)$/.test(entry.name)) continue;
     const from = path.join(source, name), to = path.join(destination, name);

@@ -9,13 +9,47 @@
 - A menu button in the top-right corner of Chats offers "Save all chats and restart": it saves every open chat, restarts the app and reopens the chats with their conversations. A reply that is still running is stopped. See `PATCHES.md` for all local changes.
 - History rows have a delete button with a confirmation. It removes the chat and its saved screen; for Claude and Codex chats a checkbox also deletes the CLI's own copy of the conversation on this computer, including its prompts in the CLI history. Data the provider already received is not affected.
 - A chat tab shows a yellow mark while its agent waits for you: "?" for a question and "!" for a permission. Claude chats report both through a Claude Code hook that Mr. Mak passes at launch; your own hooks keep running. Codex questions are read from the session file Codex already keeps. An answer that ends with a question mark shows "?" in place of the red unread dot. Codex permission prompts are not marked yet.
+- New chat offers **Claude 2**, a second Claude subscription profile that runs the same Claude Code CLI with its own login, usage meters, reset notices, History and transcripts. The original Claude profile is unchanged.
+- The chat header shows how full the context window of a Claude or Codex chat is. Its panel lists the usage by category from Claude Code's `/context`, with MCP tools, memory files, skills and agents; a refresh button runs `/context` when the chat is idle and its input is empty. See `PATCHES.md`, patch 10.
 
-## 0.5.1 - 2026-10-09
+## 0.5.2 - 2026-10-18
+
+- Group chat tabs with named, coloured headers. Drag or collapse a group, manage it from a tab's right-click menu, and find groups in History. Deleting a group keeps its chats. Pinned tabs retain their separate order.
+- Add an optional Conversation view for Claude Code and Codex, with Markdown, images, attachments, dictation, local file previews, read aloud and command completion. Terminal remains available for native CLI controls. Double-click or press F2 to rename a tab.
+- Answer CLI menus in Conversation with one-use approvals bound to the current process and full visible prompt. Changed commands, repeated submissions and changes during menu navigation are rejected.
+- Edit sent Claude messages through its native rewind. Full message labels must match exactly; ambiguous shortened labels require choosing in the terminal.
+- Clear sent command drafts before switching to Terminal, so returning to Conversation cannot restore a command that was already delivered.
+- List recent projects in New chat, pin favourite folders and filter History by project. Paired phones can select listed folders. Optional fresh-chat suggestions save a handoff and continue with the same agent and permission settings.
+- Read Codex 0.163 completed-item transcripts and follow native rewinds or `/new`. Use `--no-daemon` when supported so each terminal stays linked to its conversation. Show the active model and compact CLI/background-agent events.
+- Mobile Terminal defaults to wrapping text, with Fit and Actual modes available. Add Workspace pull-to-refresh and Android Chrome/Edge back navigation. Preserve report positions without replaying a stale restore on fragment navigation.
+- Improve macOS keyboard layouts, Option/Meta settings, clipboard, Retina drag/drop, downloads, Finder/Trash operations, recall shortcuts, CLI paths and process cleanup. Validate bundled Node and ad-hoc app signatures. Developer ID signing and notarization are not included.
+- Improve macOS setup documentation and local voice installation. Preserve accented Whisper transcripts on Windows.
+- Reset alternate-screen and mouse-capture modes before restarting a CLI; let Claude exit gracefully before the bounded hard-stop fallback.
+- Accept quoted Windows installation paths when updating.
+- Update five official GitHub Actions at verified commit pins. Keep release dependency jobs read-only, without persisted checkout credentials or automatic npm caching.
+
+## 0.5.1 - 2026-10-14
+
+- Add Antigravity CLI chats with Google sign-in, reasoning effort, per-chat native history recovery and MCP inventory. Install `agy` separately, then choose it in New chat. Model access remains controlled by Google.
+- Harden release jobs: build with read-only tokens and no saved Git credentials, separate dependency checks from tag publication, pin Actions to full commit hashes and disable npm caches in release workflows. Dependabot tracks the pinned Actions.
+- Update the optional img2threejs vision environment to Transformers 5.10.0. Pin Hugging Face model revisions and verify MediaPipe downloads with SHA-256, including cached files.
+- Validate conversation IDs and voice coordinator chat options on the server. Read malformed HTML reports without repeated backtracking.
+- Launch native Windows CLI executables directly, avoiding the encoded PowerShell wrapper that triggered the reported Norton block. Command scripts still use the full PowerShell path.
+- Improve macOS support: native app/DMG packaging, Finder and Dock behavior, Command-key shortcuts, drag and drop, microphone permission and a bundled Node runtime. A login-shell timeout keeps launch responsive. CI archives retain executable permissions.
+- Start Windows agent chats through the full PowerShell path, even when its folder is missing from PATH.
+- Support CLI selection copy through OSC 52 after a foreground selection or Copy gesture. Background output and clipboard read requests are rejected.
+- Add `Setup.ps1 -Mode Update` for source builds. Run it in an external PowerShell window; it waits for you to quit, preserves custom installation folders and restarts the same repository.
+- Improve mobile navigation and reconnect after sleep. Keep independent chat, report tab and scroll positions, including after reload. A message can reference the current report without attaching its contents.
+- Preview and download shared conversation images and videos through paired, scoped access. Images support zoom and pan. Recent activity starts collapsed.
+- Add optional local Whisper dictation on desktop and mobile, with one provider setting and recoverable recordings. Desktop dictation inserts text without pressing Enter. Updates preserve existing providers, models and appearance choices.
+- Add optional local Read aloud with Michael and Emma voices. Cross-platform Python setup uses pinned model files and SHA-256 checks. No models are downloaded at app startup, and no cloud fallback is automatic.
 
 - Click a card's status dot in the desktop Workspace to set Active, Done or Archived, change its category, or pin it. Changes save immediately; archived cards keep their files and can be restored through search or Show archive.
 - Retry card saves when Windows briefly locks the registry, preserving the latest metadata and cleaning up unsuccessful temporary writes.
 - Add left/right terminal arrows on phones for CLI menus such as reasoning effort. Keep all keys visible with touch-sized buttons that wrap on narrow screens.
 - Close an agent chat from the phone after confirmation. Its desktop tab closes too; the saved conversation stays in History and the phone retains its unsent draft.
+
+Thanks to @pbau3r-sfdy, @serhat1akman and @redDwarf03 for the contributions and reports. Outstanding security work remains tracked separately; this release does not close the full security review.
 
 ## 0.5.0 - 2026-10-09
 

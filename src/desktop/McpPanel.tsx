@@ -3,15 +3,16 @@ import { api } from './client'
 import { AgentLogo, Icon } from './Icons'
 import type { AgentId } from './types'
 import './mcp.css'
+import { fileManager } from './platform'
 
 type Check = { status: 'available' | 'agent-auth' | 'timeout' | 'unavailable'; toolCount: number | null; moreTools?: boolean; checkedAt: string; stale?: boolean }
 type Server = {
-  id: string; name: string; client: 'codex' | 'claude' | 'kimi' | 'cursor'; scope: string; enabled: boolean
+  id: string; name: string; client: 'codex' | 'claude' | 'antigravity' | 'kimi' | 'cursor'; scope: string; enabled: boolean
   readiness: string; transport: string; endpoint: string; executable: string | null; plugin: string | null
   sources: { scope: string; path: string; effective: boolean }[]; missingEnv: string[]; credentialNames: string[]; canCheck: boolean; connection: Check | null
 }
 type Inventory = { scannedAt: string; servers: Server[]; sources: { client: string; scope: string; path: string }[]; problems: { path: string; message: string }[] }
-const clients = { codex: 'Codex', claude: 'Claude', kimi: 'Kimi', cursor: 'Cursor' }
+const clients = { codex: 'Codex', claude: 'Claude', antigravity: 'Antigravity', kimi: 'Kimi', cursor: 'Cursor' }
 const scopes: Record<string, string> = { project: 'Project', local: 'Project · this PC', global: 'Global', plugin: 'Plugin', managed: 'Managed' }
 const stateLabel: Record<string, string> = { configured: 'Enabled', disabled: 'Disabled', managed: 'Host managed', 'missing-env': 'Needs setup', 'missing-command': 'Not installed', approval: 'Needs approval' }
 const checkLabel: Record<string, string> = { available: 'Available', 'agent-auth': 'Check login in agent', timeout: 'Timed out', unavailable: 'Not reachable' }
@@ -69,7 +70,7 @@ export default function McpPanel({ onClose }: { onClose: () => void }) {
         {server.connection && <p className="mcp-check-time">Checked {new Date(server.connection.checkedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>}
         {server.connection?.status === 'agent-auth' && <p className="mcp-note">This check cannot reuse the agent’s private login. Use /mcp in that agent to see its authenticated connection.</p>}
         {server.connection?.status === 'unavailable' && <p className="mcp-note">The server did not complete the MCP handshake. A local companion app may need to be running.</p>}
-        <details className="mcp-sources"><summary>Configuration{server.sources.length > 1 ? ` · ${server.sources.length} locations` : ''}</summary>{server.sources.map(source => <div key={source.path}><span>{scopes[source.scope] || source.scope}{source.effective ? ' · effective source' : ' · lower priority'}</span><code>{source.path}</code><button onClick={() => api('/reveal', { path: source.path }).catch(error => setError(String(error.message || error)))}>Show in Explorer <Icon name="external" size={12} /></button></div>)}{server.credentialNames.length > 0 && <p>Credentials are hidden.</p>}</details>
+        <details className="mcp-sources"><summary>Configuration{server.sources.length > 1 ? ` · ${server.sources.length} locations` : ''}</summary>{server.sources.map(source => <div key={source.path}><span>{scopes[source.scope] || source.scope}{source.effective ? ' · effective source' : ' · lower priority'}</span><code>{source.path}</code><button onClick={() => api('/reveal', { path: source.path }).catch(error => setError(String(error.message || error)))}>Show in {fileManager} <Icon name="external" size={12} /></button></div>)}{server.credentialNames.length > 0 && <p>Credentials are hidden.</p>}</details>
       </article>)}
       {inventory && !visible.length && <p className="mcp-empty">No MCP servers match these filters.</p>}
     </div>

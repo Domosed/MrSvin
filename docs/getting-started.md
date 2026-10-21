@@ -62,6 +62,12 @@ folder is `%LOCALAPPDATA%\MrSvin Workspace`. It does not use Mr. Mak's native
 app settings. Per-repository runtime state is generated locally in the ignored
 `.mrmak` folder. Do not copy someone else's `.mrmak` or agent login files.
 
+To update an installed build later, run `Setup.ps1 -Mode Update` in a separate
+Windows PowerShell window opened from Start, outside MrSvin. It builds the
+current source, waits until you quit MrSvin from its tray, installs the build
+silently into the registered MrSvin folder and starts MrSvin again. It never
+stops your chats itself.
+
 To ask an agent to help:
 
 > Set up this MrSvin source fork. Read AGENTS.md, docs/getting-started.md and

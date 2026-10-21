@@ -70,7 +70,7 @@
   /* ── Type ── */
   --font-body: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, 'SF Mono', Menlo, monospace;
 
   /* ── Shape ── */
   --radius-sm: 7px;

@@ -1,10 +1,10 @@
 // Real browser checks against an isolated local service, without restoring chats.
-import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createService } from '../desktop/service/server.mjs';
+import { launchBrowser } from '../desktop/service/test/browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stateDir = await mkdtemp(path.join(root, '.cache/template-ui-'));
@@ -14,7 +14,7 @@ const { entities } = JSON.parse(await readFile(path.join(root, 'workspace/worksp
 const errors = [], checks = [];
 let browser;
 try {
-  browser = await chromium.launch({ channel: 'msedge', headless: true });
+  browser = await launchBrowser();
   const page = await browser.newPage({ acceptDownloads: true });
   page.setDefaultTimeout(20000);
   page.on('pageerror', error => errors.push(error.message));

@@ -73,5 +73,7 @@ export class Attachments {
 }
 export function attachmentText(paths, agent) {
   // In a shell, literal single quotes prevent an attachment path from expanding.
-  return paths.map(file => agent === 'shell' ? "'" + file.replaceAll("'", "''") + "'" : '"' + file.replaceAll('"', '') + '"').join(' ') + ' ';
+  // PowerShell escapes a quote inside them as '', POSIX shells (zsh, bash) as '\''.
+  const quote = process.platform === 'win32' ? "''" : "'\\''";
+  return paths.map(file => agent === 'shell' ? "'" + file.replaceAll("'", quote) + "'" : '"' + file.replaceAll('"', '') + '"').join(' ') + ' ';
 }

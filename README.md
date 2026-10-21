@@ -1,8 +1,9 @@
 # MrSvin Workspace
 
 A source fork of [Mr. Mak Workspace](https://github.com/witnesstodark/mr-mak-workspace)
-with eight application patches. It keeps the two desktop windows, real CLI
-agent terminals, Workspace reports and optional mobile access through Tailscale.
+with ten application patches, based on Mr. Mak 0.6.0. It keeps the two desktop
+windows, real CLI agent terminals, Workspace reports and optional mobile access
+through Tailscale.
 
 The UI calls the assistant **Mr. Свин**. The Talk coordinator and voice companion
 answer in Russian by default. Workspace reports, interface controls and chat
@@ -23,13 +24,18 @@ Workspace Yours and Arachne Character Lab.
 - A Chats menu that saves conversations before a confirmed app restart.
 - History deletion, with an optional separate confirmation for the local CLI copy.
 - Yellow question/permission marks while an agent needs the owner's input.
+- A second Claude subscription profile, **Claude 2**, with its own login, usage
+  meters, History and native transcripts.
+- A context meter in each Claude and Codex chat header, with Claude Code's
+  `/context` breakdown by category and a refresh button.
 
 See [PATCHES.md](PATCHES.md) for the behavior, constraints and tests of each patch.
-Mobile access and the upstream 0.5.1 Workspace card controls are retained.
+Upstream 0.6.0 features are retained: the Conversation view, tab groups,
+editable Workspace cards, fresh-chat handoffs, Antigravity chats and mobile access.
 
 ## Set up from source
 
-Install at least one of Codex CLI, Claude Code CLI or OpenCode and configure
+Install at least one of Codex CLI, Claude Code CLI, Antigravity, OpenCode or Kimi and configure
 your own account. The CLIs are separate products and are not installed by setup.
 For a browser preview, install Node.js 22.20 or newer. A complete Windows desktop
 build also needs stable Rust with the MSVC toolchain, Microsoft C++ Build Tools

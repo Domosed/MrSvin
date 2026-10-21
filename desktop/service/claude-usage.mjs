@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { readJson } from './util.mjs';
 import { usageWindows } from './usage.mjs';
 import { requestHookCommand, requestHooks } from './requests.mjs';
+import { claudeConfigDir } from './claude-profiles.mjs';
 
 export const statusLineScript = fileURLToPath(new URL('./claude-statusline.mjs', import.meta.url));
 const slashes = value => value.replaceAll('\\', '/');
@@ -16,19 +17,21 @@ const pathKey = env => Object.keys(env).find(name => name.toUpperCase() === 'PAT
 // Claude subscription limits come from the rate_limits data Claude Code passes to
 // its status line. Chats started here get a status line that records them.
 export class ClaudeUsage {
-  constructor(repo, stateDir, { home = os.homedir(), env = process.env, script = statusLineScript } = {}) {
-    Object.assign(this, { repo, stateDir, home, env });
-    this.file = path.join(stateDir, 'claude-usage.json');
-    this.settingsFile = path.join(stateDir, 'claude-statusline-settings.json');
+  constructor(repo, stateDir, { home = os.homedir(), env = process.env, script = statusLineScript, agent = 'claude' } = {}) {
+    Object.assign(this, { repo, stateDir, home, env, agent });
+    this.file = path.join(stateDir, `${agent}-usage.json`);
+    // The status line keeps each chat's context window here (claude-statusline.mjs derives it from this.file).
+    this.contextDir = path.join(stateDir, `${agent}-context`);
+    this.settingsFile = path.join(stateDir, `${agent}-statusline-settings.json`);
     // Each file keeps one content, so a chat in another folder never rewrites the file a running chat was started with.
-    this.hooksFile = path.join(stateDir, 'claude-hooks-settings.json');
+    this.hooksFile = path.join(stateDir, `${agent}-hooks-settings.json`);
     // Git Bash and PowerShell both run this form: a bare command with single-quoted forward-slash paths.
     this.command = [script, this.file].some(value => value.includes("'")) ? null : `node '${slashes(script)}' '${slashes(this.file)}'`;
   }
 
   // Command-line settings outrank user settings, so never replace a status line the user configured.
   customStatusLine(cwd = this.repo) {
-    const config = this.env.CLAUDE_CONFIG_DIR || path.join(this.home, '.claude');
+    const config = claudeConfigDir(this.agent, this);
     return [path.join(config, 'settings.json'), path.join(cwd, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.local.json')].some(hasStatusLine);
   }
 

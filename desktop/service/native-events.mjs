@@ -1,10 +1,11 @@
-import { open, stat, readdir } from 'node:fs/promises';
+import { open, stat, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
+import { claudeConfigDir, nativeAgent } from './claude-profiles.mjs';
 import { StringDecoder } from 'node:string_decoder';
 import { endsWithQuestion, questionOf } from './requests.mjs';
 
 export function completedTurn(record, agent) {
+  agent = nativeAgent(agent);
   if (agent === 'codex' && record.type === 'event_msg' && record.payload?.type === 'task_complete') return { kind: 'turn-completed', id: record.payload.turn_id, text: 'The agent finished its turn. Review the result.', preview: String(record.payload.last_agent_message || '').slice(-350), question: endsWithQuestion(record.payload.last_agent_message) };
   // Claude writes thinking and text as separate records with the same message ID
   // and stop reason. Only the actual final answer creates a completion notice.
@@ -14,6 +15,7 @@ export function completedTurn(record, agent) {
 }
 
 export function nativeActivity(record, agent) {
+  agent = nativeAgent(agent);
   const completed = completedTurn(record, agent);
   if (completed) return completed;
   if (agent === 'codex' && record.type === 'event_msg') {
@@ -73,12 +75,19 @@ export function tailNativeFile(file, agent, onEvent, from = 0) {
   return () => { closed = true; clearInterval(timer); };
 }
 
-export async function claudeTranscript(cwd, nativeId) {
-  const root = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects');
-  const escaped = cwd.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+export async function claudeTranscript(cwd, nativeId, configDir = claudeConfigDir()) {
+  const root = path.join(configDir, 'projects');
   const folders = await readdir(root).catch(() => []);
-  const folder = folders.find(item => item.toLowerCase() === escaped) || cwd.replace(/[^a-zA-Z0-9]/g, '-');
-  return path.join(root, folder, `${nativeId}.jsonl`);
+  // Claude names the folder after getcwd(). Chats saved before working folders
+  // were stored resolved may hold a symlinked or differently normalised spelling.
+  const spellings = [cwd];
+  if (process.platform !== 'win32') spellings.push(await realpath(cwd).catch(() => cwd));
+  for (const spelling of spellings) {
+    const escaped = spelling.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    const folder = folders.find(item => item.toLowerCase() === escaped);
+    if (folder) return path.join(root, folder, `${nativeId}.jsonl`);
+  }
+  return path.join(root, spellings.at(-1).replace(/[^a-zA-Z0-9]/g, '-'), `${nativeId}.jsonl`);
 }
 
 export { codexTranscript } from './codex-history.mjs';

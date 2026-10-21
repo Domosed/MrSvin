@@ -1,6 +1,7 @@
 import {createReadStream} from 'node:fs';
 import {Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
+import {mobileReportStatePrelude} from './mobile-report-state.mjs';
 import {reportThemeCSS} from './report-theme.mjs';
 
 // Shared browser chrome and external-link routing. The selected reader theme
@@ -39,7 +40,7 @@ ${reportThemeCSS}
 }
 
 export function reportChromeStream(options) {
-  const prelude = preludeFor(options);
+  const prelude = options?.mobileState ? mobileReportStatePrelude(options.parentOrigin) : preludeFor(options);
   let pending = Buffer.alloc(0), inserted = false;
   const emit = function () {
     const text = pending.toString('utf8');
@@ -64,9 +65,9 @@ export function reportChromeStream(options) {
   });
 }
 
-export async function serveReport(request, response, file, info, headers) {
-  const options = {theme: new URL(request.url, 'http://localhost').searchParams.get('mrmak-theme'), parentOrigin: headers['Access-Control-Allow-Origin'] || ''};
-  const prelude = preludeFor(options);
+export async function serveReport(request, response, file, info, headers, reportOptions = {}) {
+  const options = {theme: new URL(request.url, 'http://localhost').searchParams.get('mrmak-theme'), parentOrigin: headers['Access-Control-Allow-Origin'] || '', ...reportOptions};
+  const prelude = options?.mobileState ? mobileReportStatePrelude(options.parentOrigin) : preludeFor(options);
   response.writeHead(200, {'Content-Type':'text/html; charset=utf-8', 'Content-Length':info.size + prelude.length, 'Cache-Control':'no-cache', 'X-Content-Type-Options':'nosniff', ...headers});
   if (request.method === 'HEAD') { response.end(); return; }
   await pipeline(createReadStream(file), reportChromeStream(options), response).catch(error => {

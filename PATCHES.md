@@ -1,7 +1,7 @@
 # MrSvin application patches
 
-This source fork is based on Mr. Mak Workspace 0.5.1, commit
-`c7c9fbfd0d9c4f961536392fbd50b71ff0b0c528`. The patches below are part of the
+This source fork is based on Mr. Mak Workspace 0.6.0, commit
+`fbb4004af6eb9226ed8a26518aad78b88406d1b9`. The patches below are part of the
 source and are included when the app is built. The repository contains no
 previous owner's cards, chat history, account keys or saved settings.
 
@@ -19,7 +19,8 @@ links to the provider's usage page. No provider API is called to fetch limits.
 
 Tests: `usage.test.mjs`, `claude-usage.test.mjs`, `codex-usage.test.mjs` and `ui.mjs`.
 Usage becomes available only after the CLI has recorded it. A missing status
-line or native session record is reported as unavailable.
+line or native session record is reported as unavailable. The same status line
+also records each chat's context window for patch 10.
 
 ## 2. Limit-reset notifications
 
@@ -62,6 +63,9 @@ or import someone else's settings to achieve the display identity.
 
 After an upstream update, review new visible strings. Keep native product,
 shortcut and notification identities aligned. UI tests assert renamed labels.
+The macOS launcher is `Start MrSvin.command` and the bundle is
+`MrSvin Workspace.app`; `Setup.ps1 -Mode Update` and `scripts/update-helpers.ps1`
+look only for the MrSvin executable, uninstall entry and install folder.
 
 ## 5. Russian coordinator and voice persona
 
@@ -130,9 +134,54 @@ Implementation: `requests.mjs`, `claude-request-hook.mjs`, `native-events.mjs`,
 Tests: `requests.test.mjs` and `requests-ui.mjs`. Codex permission prompts are not
 detected by this patch; global Codex hooks are not installed automatically.
 
+## 9. Second Claude subscription profile
+
+New chat offers **Claude 2** with a blue icon. It runs the same Claude Code CLI
+with `CLAUDE_CONFIG_DIR=<workspace state>/claude-2` (normally `.mrmak/claude-2`)
+and signs in to its own subscription on first use. The original Claude profile,
+its command, credentials and configuration path stay unchanged; neither profile
+is copied. Inherited Anthropic/Claude credential and provider overrides are
+removed from the Claude 2 launch only.
+
+The profile is stored as the chat's agent and used for launch, resume, native
+IDs, effort, activity, transcripts, mobile messages, the Conversation view,
+handoffs, message editing, command completion and explicit CLI-history
+deletion. Identical native IDs in different profiles never read or delete the
+other profile's transcript. Each profile has its own usage files and reset
+notices.
+
+Implementation: `claude-profiles.mjs` and profile-aware code in `agents.mjs`,
+`sessions.mjs`, `claude-usage.mjs`, `native-events.mjs`, `native-delete.mjs`,
+`mobile-transcript.mjs`, `chat-commands.mjs`, `handoff.mjs`, `message-edit.mjs`,
+the UI types and pickers. Tests: `claude-profiles.test.mjs` and
+`claude-profiles-ui.mjs`. No real login or paid model turn is used.
+
+## 10. Context meter
+
+The header of a Claude, Claude 2 or Codex chat shows how full its context window
+is, for example `8 % · 75.9k / 1M`. Its panel lists the usage by category from
+Claude Code's `/context` (deferred tools last) and expandable MCP tool, memory
+file, skill and agent lists. **Обновить** sends `/context`, a local Claude Code
+command that spends no tokens, and waits for its report.
+
+- Claude totals come from `context_window` in the status line data, recorded per
+  chat in `<state>/claude-context/<session id>.json` (`claude2-context` for
+  Claude 2) only when a value changes. With a user's own status line, the total
+  is estimated from the newest reply's token usage and the last report's window.
+  `/compact` clears the value until the next reply.
+- The `/context` report is read from the transcript record Claude Code writes
+  for it; the Conversation view already hides such meta records.
+- Codex reports only its total, from the newest `token_count` session event.
+- Refresh is refused unless the chat runs, the agent is idle, no CLI menu is
+  open and the input box holds only the empty prompt, so a draft is never sent.
+
+Implementation: `context-usage.mjs`, `claude-statusline.mjs`, the
+`/api/sessions/<id>/context` routes, `ContextMeter.tsx` and `context-meter.css`.
+Tests: `context-usage.test.mjs` and `context-ui.mjs`.
+
 ## Checks and source-only build limits
 
-Run the checks listed in the README. `desktop:test:patches:ui` includes the three
+Run the checks listed in the README. `desktop:test:patches:ui` includes the five
 local UI suites that the upstream aggregate script does not cover. UI checks
 use isolated state, fake agents and temporary browser profiles. The theme UI
 suite can time out at the system-theme emulation step; rerun that suite and run

@@ -1,11 +1,11 @@
 // Exercise browser-only preview with the real predev setup, including a failed lazy import.
 // No desktop service, CLI sessions, or user profile is opened.
-import { chromium } from '@playwright/test';
 import { createServer } from 'vite';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launchBrowser } from '../desktop/service/test/browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Setup.ps1 -Mode Preview runs npm run dev, which creates this public junction.
@@ -17,7 +17,7 @@ let browser;
 try {
   await server.listen();
   const url = server.resolvedUrls.local[0];
-  browser = await chromium.launch({ channel: process.env.MRMAK_TEST_BROWSER || 'msedge', headless: true });
+  browser = await launchBrowser();
   const page = await browser.newPage();
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -39,6 +39,14 @@ try {
             await frame.locator(`[data-page="${id}"]`).click();
             await frame.locator(`#${id}:visible`).waitFor();
           }
+        }
+      } else if (step.viewer === 'card') {
+        await page.locator('.card-content h1').waitFor();
+        assert.match(await page.locator('.card-readonly').textContent(), /desktop app/);
+        assert.equal(await page.getByRole('button', { name: 'Edit', exact: true }).count(), 0);
+        for (const image of await page.locator('.card-entry-image img').all()) {
+          await image.waitFor();
+          assert.ok(await image.evaluate(node => node.complete && node.naturalWidth > 0), 'Card image should load in browser preview');
         }
       } else {
         await page.locator('.mak-markdown h1').waitFor();

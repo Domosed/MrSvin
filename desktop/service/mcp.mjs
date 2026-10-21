@@ -9,7 +9,7 @@ import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotoc
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { commandPath } from './agents.mjs';
-import { terminateProcessTree } from './platform.mjs';
+import { macLocale, terminateProcessTree } from './platform.mjs';
 
 const key = value => path.resolve(value).replaceAll('\\', '/').toLowerCase();
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -48,7 +48,7 @@ export class McpInventory {
       if (!Object.keys(object(configs)).length) return;
       sources.push({ client, scope, path: file });
       for (const [name, config] of Object.entries(object(configs))) {
-        if (config && typeof config === 'object') entries.push({ client, scope, file, name, config, priority, ...extras });
+        if (config && typeof config === 'object') entries.push({ client, scope, file, name, config: client === 'antigravity' && config.serverUrl ? { ...config, url: config.serverUrl } : config, priority, ...extras });
       }
     };
     const paths = {
@@ -58,6 +58,7 @@ export class McpInventory {
       claudeProjectSettings: path.join(this.repo, '.claude/settings.json'), claudeLocalSettings: path.join(this.repo, '.claude/settings.local.json'),
       kimiUser: path.join(this.home, '.kimi/mcp.json'), kimiProject: path.join(this.repo, '.kimi-code/mcp.json'),
       cursorUser: path.join(this.home, '.cursor/mcp.json'), cursorProject: path.join(this.repo, '.cursor/mcp.json'),
+      antigravityUser: path.join(this.home, '.gemini/config/mcp_config.json'), antigravityProject: path.join(this.repo, '.agents/mcp_config.json'),
     };
     const values = Object.fromEntries(await Promise.all(Object.entries(paths).map(async ([name, file]) => [name, await read(file)])));
     const codex = merge(values.codexUser, values.codexProject);
@@ -68,17 +69,17 @@ export class McpInventory {
     const localProject = Object.entries(object(values.claudeUser.projects)).find(([folder]) => key(folder) === key(this.repo))?.[1] || {};
     add('claude', 'local', paths.claudeUser, localProject.mcpServers, 30);
     const claudeSettings = merge(merge(values.claudeSettings, values.claudeProjectSettings), values.claudeLocalSettings);
-    for (const client of ['kimi', 'cursor']) {
+    for (const client of ['kimi', 'cursor', 'antigravity']) {
       add(client, 'global', paths[`${client}User`], values[`${client}User`].mcpServers, 10);
       add(client, 'project', paths[`${client}Project`], values[`${client}Project`].mcpServers, 20);
     }
-    if (process.platform === 'win32') {
-      const managedPath = path.join(this.env.ProgramFiles || 'C:/Program Files', 'ClaudeCode/managed-mcp.json');
-      const managed = await read(managedPath);
-      if (managed.mcpServers) {
-        for (const entry of entries) if (entry.client === 'claude') entry.restricted = true;
-        add('claude', 'managed', managedPath, managed.mcpServers, 100, { managed: true });
-      }
+    // Claude Code's administrator-managed MCP file lives in a fixed system location per platform.
+    const managedPath = process.platform === 'win32' ? path.join(this.env.ProgramFiles || 'C:/Program Files', 'ClaudeCode/managed-mcp.json')
+      : process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode/managed-mcp.json' : '/etc/claude-code/managed-mcp.json';
+    const managed = await read(managedPath);
+    if (managed.mcpServers) {
+      for (const entry of entries) if (entry.client === 'claude') entry.restricted = true;
+      add('claude', 'managed', managedPath, managed.mcpServers, 100, { managed: true });
     }
     // Inspect declared installed plugins only. A downloaded cache is not proof
     // that a plugin is enabled. Never copy or launch host-owned transports.
@@ -151,7 +152,7 @@ export class McpInventory {
         canCheck: !disabled && !hostManaged && !approvalNeeded && !missing.size && (transport !== 'stdio' || !!executable) && !config.http_headers_helper,
       };
       servers.push(data);
-      const childEnv = { ...getDefaultEnvironment(), ...object(expanded.env) };
+      const childEnv = { ...getDefaultEnvironment(), ...macLocale(), ...object(expanded.env) };
       for (const variable of config.env_vars || []) { const name = typeof variable === 'string' ? variable : variable.name; if (env[name] != null) childEnv[name] = env[name]; }
       raw.set(id, { data, fingerprint, config: expanded, headers, command: executable, cwd, env: childEnv });
     }

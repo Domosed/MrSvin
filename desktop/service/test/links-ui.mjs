@@ -1,10 +1,10 @@
 // Isolated fake chats and local documents. No production session is touched.
-import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createService } from '../server.mjs';
+import { launchBrowser } from './browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const repo = await mkdtemp(path.join(root, '.cache/links-ui-'));
@@ -22,7 +22,7 @@ service.sessions.items.set(session.id, session); await service.sessions.hydrate(
 session.process = { write() {}, resize() {}, kill() {} };
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, channel: process.env.MRMAK_TEST_BROWSER || 'msedge' });
+  browser = await launchBrowser();
   const context = await browser.newContext({ viewport: { width: 650, height: 740 } });
   await context.route('https://browser-check.example/**', route => route.fulfill({ contentType: 'text/html', body: '<h1>External destination</h1>' }));
   const page = await context.newPage(); page.setDefaultTimeout(10000);
