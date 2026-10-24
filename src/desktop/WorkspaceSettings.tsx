@@ -6,6 +6,7 @@ import DictationSettings from '../components/DictationSettings'
 import { useDictation } from './useDictation'
 import ThemePicker from '../components/ThemePicker'
 import { isMac, shellName } from './platform'
+import { defaultChatSoundVolume, playChatSound } from './chatSound'
 
 type NativeSettings = { available: boolean; winKey: boolean; label?: string; error?: string }
 export default function WorkspaceSettings({ onClose }: { onClose: () => void }) {
@@ -14,6 +15,10 @@ export default function WorkspaceSettings({ onClose }: { onClose: () => void }) 
   const [native, setNative] = useState<NativeSettings>({ available: false, winKey: false })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // The slider follows the pointer; the setting is saved when it is released.
+  const [moving, setVolume] = useState<number | null>(null)
+  const volume = moving ?? settings.chatSoundVolume ?? defaultChatSoundVolume
+  const saveVolume = () => { if (moving !== null) void change({ chatSoundVolume: moving }).then(() => setVolume(null)) }
   useEffect(() => {
     const refresh = () => api<NativeSettings>('/native/settings').then(setNative).catch(error => setError(String(error.message || error)))
     void refresh()
@@ -37,6 +42,9 @@ export default function WorkspaceSettings({ onClose }: { onClose: () => void }) 
       <label>Terminal appearance<select disabled={busy} value={settings.terminalAppearance || 'original'} onChange={event => void change({ terminalAppearance: event.target.value as Settings['terminalAppearance'] })}><option value="original">Original CLI colors</option><option value="focus">Mr. Свин Focus · muted colors</option></select></label><p>Original preserves CLI colors, including added and removed lines. Focus uses muted colors. Your choice is saved for all chats and applies immediately without restarting them.</p>
       {isMac && <label className="setting-toggle"><span>Use Option as Meta key<small>Sends Meta shortcuts to the CLI. When off, Option types your keyboard layout's characters, such as @ or #.</small></span><input type="checkbox" checked={!!settings.terminalOptionMeta} disabled={busy} onChange={event => void change({ terminalOptionMeta: event.target.checked })} /></label>}
       <label className="setting-toggle"><span>Bypass CLI permissions<small>Default for new chats.</small></span><input type="checkbox" checked={settings.defaultBypass} disabled={busy} onChange={event => void change({ defaultBypass: event.target.checked })} /></label>
+      <label className="setting-toggle"><span>Sound when a chat finishes or waits<small>A soft falling tone when an agent finishes; a rising one, played twice, when it asks a question or for a permission.</small></span><input type="checkbox" checked={settings.chatSound !== false} disabled={busy} onChange={event => void change({ chatSound: event.target.checked })} /></label>
+      {settings.chatSound !== false && <div className="setting-sound"><label>Volume · {volume}%<input type="range" min={1} max={100} value={volume} aria-label="Notification volume" onChange={event => setVolume(Number(event.target.value))} onPointerUp={saveVolume} onKeyUp={saveVolume} onBlur={saveVolume} /></label>
+        <div role="group" aria-label="Preview sounds"><button type="button" className="desk-secondary" onClick={() => playChatSound('done', volume)}><Icon name="play" size={12} />Finished</button><button type="button" className="desk-secondary" onClick={() => playChatSound('waiting', volume)}><Icon name="play" size={12} />Waiting</button></div></div>}
     </section><DictationSettings info={dictation.info} onChange={dictation.choose} /><section><h3>Mr. Свин</h3><label>Voice<select disabled={busy} value={settings.voiceName || 'cedar'} onChange={event => void change({ voiceName: event.target.value })}><option value="cedar">Cedar</option><option value="marin">Marin</option></select></label><label>Coordinator reasoning<select disabled={busy} value={settings.coordinatorEffort || 'medium'} onChange={event => void change({ coordinatorEffort: event.target.value as Settings['coordinatorEffort'] })}><option value="medium">Medium</option><option value="high">High</option></select></label><p>Voice changes apply to your next conversation.</p></section>
       <section><h3>Project</h3><p className="settings-repo">{repo}</p><p>Skills, knowledge and processes belong to this repository.</p></section>
       {error && <p className="desk-error-inline" role="alert">{error}</p>}

@@ -58,7 +58,11 @@ export function dropRequests(session) {
 const slashes = value => value.replaceAll('\\', '/');
 // Git Bash and PowerShell both run this form, like the status line command.
 export const requestHookCommand = (script = requestHookScript) => script.includes("'") ? null : `node '${slashes(script)}'`;
-export const requestHooks = command => ({ PermissionRequest: [{ hooks: [{ type: 'command', command, timeout: 10 }] }] });
+// SessionStart reports the session ID that /clear switches the terminal to.
+export const requestHooks = command => ({
+  PermissionRequest: [{ hooks: [{ type: 'command', command, timeout: 10 }] }],
+  SessionStart: [{ hooks: [{ type: 'command', command, timeout: 10 }] }],
+});
 
 // Points the permission hook of one Claude chat at an empty file of its own, so
 // a prompt from an earlier launch is never replayed.
@@ -72,7 +76,7 @@ export function openRequests(stateDir, chatId, env) {
   } catch { return null; }
 }
 
-export function watchRequests(file, onPrompt) {
+export function watchRequests(file, onPrompt, onSession) {
   let offset = 0, partial = '', closed = false, reading = false;
   const tick = async () => {
     if (closed || reading) return;
@@ -89,7 +93,11 @@ export function watchRequests(file, onPrompt) {
         const lines = (partial + buffer.toString('utf8', 0, bytesRead)).split('\n');
         partial = lines.pop() || '';
         for (const line of lines) {
-          try { const { tool, at } = JSON.parse(line); if (!closed && typeof tool === 'string') onPrompt(tool, Number(at) || 0); } catch { /* A partial line is ignored. */ }
+          try {
+            const { tool, session, at } = JSON.parse(line);
+            if (!closed && typeof tool === 'string') onPrompt(tool, Number(at) || 0);
+            if (!closed && typeof session === 'string') onSession?.(session);
+          } catch { /* A partial line is ignored. */ }
         }
       } finally { await handle.close(); }
     } catch { /* The hook has not written yet. */ }

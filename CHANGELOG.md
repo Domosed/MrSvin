@@ -11,6 +11,13 @@
 - A chat tab shows a yellow mark while its agent waits for you: "?" for a question and "!" for a permission. Claude chats report both through a Claude Code hook that Mr. Mak passes at launch; your own hooks keep running. Codex questions are read from the session file Codex already keeps. An answer that ends with a question mark shows "?" in place of the red unread dot. Codex permission prompts are not marked yet.
 - New chat offers **Claude 2**, a second Claude subscription profile that runs the same Claude Code CLI with its own login, usage meters, reset notices, History and transcripts. The original Claude profile is unchanged.
 - The chat header shows how full the context window of a Claude or Codex chat is. Its panel lists the usage by category from Claude Code's `/context`, with MCP tools, memory files, skills and agents; a refresh button runs `/context` when the chat is idle and its input is empty. See `PATCHES.md`, patch 10.
+- After `/clear` a Claude chat follows its new conversation: the context meter, activity marks, Conversation view and restart resume use the cleared conversation. A new or cleared conversation shows no context data instead of "after /compact" until its first reply. See patch 11.
+- A chat no longer looks busy after a local command such as `/clear`, `/effort` or `/model`, a `!` shell command, or a compaction that Claude Code ran by itself while the chat was idle.
+- The Usage panel shows Codex limits like Codex itself, with both figures, for example "70% used · 30% left", and reads the current limits from an open chat that continues an older Codex thread.
+- Files and folders that an agent mentions get a folder button that shows them in Explorer with the file selected: in Conversation answers after links, paths in code and paths in the text, and in the terminal of an agent chat after each existing path. Windows paths in Conversation keep their backslashes. See patch 12.
+- A soft tone plays when a chat finishes its turn, and a different, rising one when it asks a question or for a permission. Settings → Chats turns it off and sets its volume. See patch 13.
+- A Codex side thread (`/btw`) gets buttons under the terminal to switch threads, close the side thread and view warnings; on Windows they reach Codex as exact keys, and a typed Ctrl+/ does too. See patch 14.
+- New chat lets you choose the reasoning effort (Medium, High, XHigh or Max) for Codex, Claude and Antigravity chats and remembers the last choice. See patch 15.
 
 ## 0.5.2 - 2026-10-18
 

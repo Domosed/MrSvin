@@ -15,6 +15,8 @@ import { visibleUserMessage } from '../mobile/workspace-context'
 import { spokenText, useReadAloud } from '../mobile/useReadAloud'
 import { readingVoiceChanged, readingVoices, saveReadingVoice, savedReadingVoice } from '../mobile/readingVoices'
 import { commandToken, completeCommand, matchingCommands, terminalCommand, type ChatCommand } from './commandSuggestions'
+import { PathCode, PathProvider, PathReveal, PathSpan } from './PathReveal'
+import { keepPathSlashes, remarkPaths } from './pathMentions'
 import './conversation.css'
 
 interface ToolActivity { id: string; name: string; status: 'running' | 'completed' | 'failed'; at: string }
@@ -49,14 +51,16 @@ function linkTarget(href = ''): LinkTarget {
   target = target.replace(/#.*$/, '').replace(/:\d+(?::\d+)?$/, '')
   return target ? { kind: 'local', path: target } : { kind: 'text' }
 }
+const answerPlugins = [remarkGfm, remarkPaths]
 // react-markdown drops unknown schemes, which includes drive paths such as E:/game.
 // Keep them for linkTarget; script and data URLs are still removed.
 const keepUrl = (url: string) => /^\s*(javascript|vbscript|data):/i.test(url) ? '' : url
-function MessageLink({ href, sessionId, children }: { href?: string; sessionId: string; children: React.ReactNode }) {
+function MessageLink({ href, sessionId, reveal = false, children }: { href?: string; sessionId: string; reveal?: boolean; children: React.ReactNode }) {
   const target = linkTarget(href)
   if (target.kind === 'web') return <a href={href} target="_blank" rel="noreferrer">{children}</a>
   if (target.kind === 'text') return <span className="conversation-link-text">{children}</span>
-  return <a href={href} title={`Open ${target.path}`} onClick={event => { event.preventDefault(); api('/preview/show', { path: target.path, sessionId }).catch(reportError) }}>{children}</a>
+  const link = <a href={href} title={`Open ${target.path}`} onClick={event => { event.preventDefault(); api('/preview/show', { path: target.path, sessionId }).catch(reportError) }}>{children}</a>
+  return reveal ? <>{link}<PathReveal path={target.path} /></> : link
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -218,7 +222,7 @@ export default function Conversation({ session, connected, agentLabel, openTermi
   const unreadable = transcript && !transcript.supported && session.hasConversation
   return <div ref={area} className="desk-conversation">
     <div className="conversation-scroll" ref={scroller} onScroll={() => { const box = scroller.current; if (!box) return; const nearEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 120; follow.current = nearEnd; setShowJump(!nearEnd) }}>
-      <div className="conversation-column">
+      <div className="conversation-column"><PathProvider sessionId={session.id}>
         {transcript?.truncated && <p className="conversation-note">Showing the latest part of a long conversation. The terminal keeps the full history.</p>}
         {messages.map((message, index) => message.role === 'system' ? systemEvents !== 'hidden' && message.event && <SystemEvent key={`${message.id}:${systemEvents}`} event={message.event} time={message.at ? time(message.at) : undefined} expanded={systemEvents === 'full'}
           components={{ a: ({ href, children }) => <MessageLink href={href} sessionId={session.id}>{children}</MessageLink> }} fileLink={(file, label) => <MessageLink href={file} sessionId={session.id}>{label}</MessageLink>} />
@@ -237,7 +241,10 @@ export default function Conversation({ session, connected, agentLabel, openTermi
               <button type="button" disabled={rewinding} onClick={() => setEditing(null)}>Cancel</button>
               <button type="submit" disabled={rewinding || !canEdit || !openEdit.text.trim()}>Send</button></footer>
           </form>
-          : message.text.trim() && <div className="conversation-copy-text"><ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={{ img: () => null, a: ({ href, children }) => <MessageLink href={href} sessionId={session.id}>{children}</MessageLink> }}>{message.role === 'user' ? visibleUserMessage(message.text) : message.text}</ReactMarkdown></div>}
+          : message.text.trim() && <div className="conversation-copy-text">{message.role === 'user'
+            ? <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={{ img: () => null, a: ({ href, children }) => <MessageLink href={href} sessionId={session.id}>{children}</MessageLink> }}>{keepPathSlashes(visibleUserMessage(message.text))}</ReactMarkdown>
+            // Answers get a folder button at every file or folder they mention.
+            : <ReactMarkdown remarkPlugins={answerPlugins} urlTransform={keepUrl} components={{ img: () => null, a: ({ href, children }) => <MessageLink href={href} sessionId={session.id} reveal>{children}</MessageLink>, span: PathSpan, code: PathCode }}>{keepPathSlashes(message.text)}</ReactMarkdown>}</div>}
           <ConversationImages images={message.images} />
           {index === messages.length - 1 && message.role === 'assistant' && index > readStart && <div className="conversation-read-aloud">
             <button type="button" onClick={() => readAloud(message.id)} aria-label={speech.activeId ? speech.paused ? 'Resume reading' : 'Pause reading' : 'Read aloud'} title={speech.activeId ? speech.paused ? 'Resume reading' : 'Pause reading' : 'Read this reply aloud'}><Icon name={speech.activeId ? speech.paused ? 'play' : 'pause' : 'speaker'} size={15} />{speech.activeId ? speech.paused ? 'Resume' : 'Pause' : 'Read aloud'}</button>
@@ -262,7 +269,7 @@ export default function Conversation({ session, connected, agentLabel, openTermi
         </section>}
         {working && <p className="conversation-working"><i />{agentLabel} is working…</p>}
         {!transcript?.prompt && (session.activity === 'waiting' || stale || readError) && <div className="conversation-notice" role="status"><p>{readError || (session.activity === 'waiting' ? `${agentLabel} is waiting for you in the terminal.` : 'No new messages for a while. A permission prompt or question may be waiting in the terminal.')}</p><button type="button" onClick={openTerminal}><Icon name="terminal" size={14} />Open terminal</button></div>}
-      </div>
+      </PathProvider></div>
     </div>
     {showJump && <button type="button" className="conversation-jump" onClick={() => { follow.current = true; setShowJump(false); const box = scroller.current; if (box) box.scrollTop = box.scrollHeight }}><Icon name="down" size={15} />Latest</button>}
     {dragging && <div className="terminal-drop"><Icon name="attach" size={30} /><strong>Drop to attach</strong><span>Files, folders and images</span></div>}

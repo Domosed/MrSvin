@@ -34,19 +34,25 @@ async function latestRecord(file, size) {
   return null;
 }
 
+// Codex thread IDs are UUIDv7: the first 48 bits are the start time, whose date names the rollout's folder.
+export const threadStart = id => /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/i.test(id || '') ? parseInt(id.replace(/-/g, '').slice(0, 12), 16) : NaN;
+
 // Codex subscription limits come from the rate_limits data the CLI saves with each
 // reply in its session files. They are read here and never changed.
 export class CodexUsage {
   constructor(home = codexHome()) {
     this.home = home;
     this.cache = new Map();
+    // The IDs of open Codex chats (server.mjs); a chat resumed from an older thread writes into that thread's folder.
+    this.threads = () => [];
   }
 
   async read(now = Date.now()) {
     const cache = new Map();
     let latest = null;
     // A weekly window spans sessions started in the last eight days; each timestamp also covers the days next to it.
-    for await (const file of transcriptFiles(recentFolders(this.home, [0, 3, 6].map(days => now - days * 86400000)), false)) {
+    const started = [0, 3, 6].map(days => now - days * 86400000).concat(this.threads().map(threadStart));
+    for await (const file of transcriptFiles(recentFolders(this.home, started), false)) {
       const size = (await stat(file).catch(() => null))?.size;
       if (size === undefined) continue;
       // Windows keeps the modification time of a file Codex still has open, so a changed size marks new records.

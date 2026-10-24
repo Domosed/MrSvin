@@ -117,7 +117,10 @@ export class ContextUsage {
     const live = recorded && { used: recorded.used, window: recorded.window, percent: recorded.usedPercentage ?? percentOf(recorded.used, recorded.window), at: recorded.updatedAt, compacted: recorded.used == null };
     const window = live?.window || breakdown?.window || null;
     let total = null;
-    if (live && (!estimate || newer(live, estimate))) total = { ...live, source: 'status-line' };
+    // The status line has no usage after /compact, and also before the first reply of a
+    // conversation, such as a new chat or one just cleared with /clear.
+    const empty = live?.compacted && !estimate?.compacted;
+    if (live && !empty && (!estimate || newer(live, estimate))) total = { ...live, source: 'status-line' };
     else if (estimate) total = { used: estimate.used, window, percent: percentOf(estimate.used, window), source: 'transcript', at: estimate.at, compacted: !!estimate.compacted };
     return { supported: true, total, breakdown, refreshable };
   }

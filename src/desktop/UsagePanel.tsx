@@ -19,20 +19,21 @@ function updated(at: string, now: number) {
   return new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function Meter({ label, limit, agent, now }: { label: string; limit: UsageLimit; agent: string; now: number }) {
+// Codex itself (/status, chatgpt.com) shows how much is left, so its meters show both figures.
+function Meter({ label, limit, agent, now, remaining }: { label: string; limit: UsageLimit; agent: string; now: number; remaining: boolean }) {
   const used = Math.round(limit.usedPercentage)
   return <div className={`usage-meter ${used >= 95 ? 'high' : used >= 80 ? 'warn' : ''}`}>
-    <div className="usage-meter-label"><span>{label}</span><strong>{used}%</strong></div>
+    <div className="usage-meter-label"><span>{label}</span><strong>{remaining ? <>{used}% used<span className="usage-left"> · {Math.max(0, 100 - used)}% left</span></> : `${used}%`}</strong></div>
     <div className="usage-bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, used)}><i style={{ width: `${Math.min(100, used)}%` }} /></div>
     <small>{resets(limit, agent, now)}</small>
   </div>
 }
 
-function Provider({ name, color, usage, weekly, empty, site, url, now }: { name: string; color: string; usage: Usage; weekly: string; empty: string; site: string; url: string; now: number }) {
+function Provider({ name, color, usage, weekly, empty, site, url, now, remaining = false }: { name: string; color: string; usage: Usage; weekly: string; empty: string; site: string; url: string; now: number; remaining?: boolean }) {
   const meters: [string, UsageLimit | null][] = [['Current session · 5 h', usage.fiveHour], [weekly, usage.sevenDay], ['Spend limit', usage.spendLimit]]
   return <div className="usage-provider" role="group" aria-label={`${name} usage`}>
     <h3><span style={{ color }}>{name}</span>{usage.updatedAt && <small>Updated {updated(usage.updatedAt, now)}</small>}</h3>
-    {usage.available ? meters.map(([label, limit]) => limit && <Meter key={label} label={label} limit={limit} agent={name} now={now} />) : <p className="usage-empty">{empty}</p>}
+    {usage.available ? meters.map(([label, limit]) => limit && <Meter key={label} label={label} limit={limit} agent={name} now={now} remaining={remaining} />) : <p className="usage-empty">{empty}</p>}
     <button className="usage-link" onClick={event => openWebLink(url, event.ctrlKey || event.metaKey)}>Open usage on {site}<Icon name="external" size={12} /></button>
   </div>
 }
@@ -62,7 +63,7 @@ export default function UsagePanel({ agents, onClose }: { agents: AgentInfo[]; o
     {error && <p className="desk-error-inline" role="alert">{error}</p>}
     {usage && claudes.map(claude => { const limits = usage[claude.id as 'claude' | 'claude2']; return <Provider key={claude.id} name={claude.id === 'claude2' ? 'Claude 2' : 'Claude'} color={claude.color} usage={limits} weekly="Weekly · all models" site="claude.ai" url="https://claude.ai/settings/usage" now={now}
       empty={limits.customStatusLine ? 'Your own Claude status line is active, so Mr. Свин does not replace it to read usage.' : !limits.enabled ? 'Mr. Свин cannot add its Claude status line from this installation path.' : 'Usage appears after Claude replies in a chat started or resumed here. It is available for Claude Pro and Max plans.'} /> })}
-    {usage && codex && <Provider name="Codex" color={codex.color} usage={usage.codex} weekly="Weekly" site="chatgpt.com" url="https://chatgpt.com/codex/settings/usage" now={now}
+    {usage && codex && <Provider name="Codex" color={codex.color} usage={usage.codex} weekly="Weekly" site="chatgpt.com" url="https://chatgpt.com/codex/settings/usage" now={now} remaining
       empty="Usage appears after Codex replies in a chat. It is available when Codex is signed in with a ChatGPT plan." />}
   </section>
 }

@@ -117,6 +117,8 @@ try {
     const session = codex.getByRole('progressbar', { name: 'Current session · 5 h', exact: true });
     await session.waitFor(); assert.equal(await session.getAttribute('aria-valuenow'), '97');
     assert.equal(await codex.getByRole('progressbar', { name: 'Weekly', exact: true }).getAttribute('aria-valuenow'), '15');
+    // Codex itself shows what is left, so its meters give both figures.
+    assert.deepEqual(await codex.locator('.usage-meter-label strong').allTextContents(), ['97% used · 3% left', '15% used · 85% left']);
     assert.equal(await codex.locator('.usage-meter.high').count(), 1);
   }
   if (usageAgents.length) { await page.keyboard.press('Escape'); await page.locator('.usage-panel').waitFor({ state: 'detached' }); }

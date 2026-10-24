@@ -17,6 +17,13 @@ links to the provider's usage page. No provider API is called to fetch limits.
   including conversations started outside the app. It does not read login keys.
 - `usage.mjs`, `UsagePanel.tsx` and `/api/usage` provide the panel.
 
+- Codex itself shows how much of a limit is left, so its meters give both
+  figures, for example `70% used · 30% left`; Claude keeps the used figure.
+- Codex thread IDs are UUIDv7, whose first 48 bits are the start time that names
+  the rollout folder. The open Codex chats' IDs (`CodexUsage.threads`, set in
+  `server.mjs`) add their folders, so a chat that continues a thread started
+  more than a week ago reports the current limits.
+
 Tests: `usage.test.mjs`, `claude-usage.test.mjs`, `codex-usage.test.mjs` and `ui.mjs`.
 Usage becomes available only after the CLI has recorded it. A missing status
 line or native session record is reported as unavailable. The same status line
@@ -168,7 +175,10 @@ command that spends no tokens, and waits for its report.
   chat in `<state>/claude-context/<session id>.json` (`claude2-context` for
   Claude 2) only when a value changes. With a user's own status line, the total
   is estimated from the newest reply's token usage and the last report's window.
-  `/compact` clears the value until the next reply.
+  `/compact` clears the value until the next reply. A status-line record
+  without usage counts as compacted only after a transcript `compact_boundary`;
+  a conversation without a reply yet (a new chat, or one just cleared with
+  `/clear`, see patch 11) shows no data instead.
 - The `/context` report is read from the transcript record Claude Code writes
   for it; the Conversation view already hides such meta records.
 - Codex reports only its total, from the newest `token_count` session event.
@@ -179,10 +189,80 @@ Implementation: `context-usage.mjs`, `claude-statusline.mjs`, the
 `/api/sessions/<id>/context` routes, `ContextMeter.tsx` and `context-meter.css`.
 Tests: `context-usage.test.mjs` and `context-ui.mjs`.
 
+## 11. Chats follow /clear and never stay busy after local commands
+
+Claude Code starts a new session ID and transcript on `/clear`. The settings
+file passed at launch also carries a `SessionStart` hook with the patch 8
+command. `claude-request-hook.mjs` appends the session ID to the chat's own
+request file and prints nothing, because `SessionStart` output would enter the
+model's context. `Sessions.followClaude` ignores the chat's own ID (startup)
+and an ID another chat of the same profile shows, then switches the chat's
+native ID and tails the new transcript. The context meter, activity, the
+Conversation view and a restart resume follow the cleared conversation.
+
+`nativeActivity` no longer starts a turn for user records that are local
+commands (`/clear`, `/effort`, `/model` …), their output, `!` shell commands or
+a compaction summary, which Claude Code also writes when it compacts an idle
+chat by itself. Those records get no reply and left the chat looking busy.
+
+Implementation: `claude-request-hook.mjs`, `requests.mjs`, `sessions.mjs` and
+`native-events.mjs`. Tests: `requests.test.mjs`, `activity.test.mjs` and
+`claude-usage.test.mjs`. `node desktop/service/test-clear.mjs --use-cli`
+starts the signed-in Claude Code, runs `/clear` without a model turn, checks
+that the chat follows the new ID and deletes both conversations.
+
+## 12. Folder buttons at file paths
+
+Files and folders an agent mentions can be shown in Explorer, with the file
+selected; a folder opens. Only paths that exist get a button, absolute ones and
+ones relative to the chat folder.
+
+- Conversation: answers get a small folder button after links to local files,
+  paths in `code` and paths in the text (`pathMentions.ts`, `PathReveal.tsx`).
+  The user's own messages and code blocks get none. A backslash before
+  punctuation inside a Windows path is kept, which Markdown would otherwise drop.
+- Terminal of an agent chat: existing paths are links, and a folder icon sits on
+  the first blank cell after each one, past closing punctuation, so it never
+  covers text (`terminalPaths.ts`, xterm decorations). OSC 8 `file://` links
+  also reveal their file.
+- `POST /api/paths/check` reports which of at most 300 paths exist;
+  `POST /api/reveal` accepts the chat to resolve a relative path and opens the
+  nearest existing folder for a path that is gone.
+
+Tests: `path-reveal.test.mjs` and `reveal-sound-ui.mjs`.
+
+## 13. Quiet tones when a chat finishes or waits
+
+The Chats window plays a soft falling pair of tones when a chat finishes its
+turn and a rising pair, twice, when it starts waiting for an answer or a
+permission. Several chats at once ring once; chats seen for the first time stay
+silent. Settings → Chats turns it off and sets the volume (30% by default), with
+previews. The tones are synthesized with Web Audio (`chatSound.ts`); no audio
+file is shipped. Test: `reveal-sound-ui.mjs` with a recording Web Audio stub.
+
+## 14. Buttons for the keys of a Codex side thread
+
+A Codex side thread (`/btw`) names its keys in the bottom row: Ctrl+/ to switch,
+Ctrl+C to close and F2 to view warnings. Agent chats use Ctrl+C for copy, and
+xterm.js sends Ctrl+/ as 0x1F, which ConPTY delivers as Ctrl+Shift+-; a raw 0x03
+becomes a console signal. ConPTY requests win32-input-mode, so the buttons under
+the terminal send `CSI Vk;Sc;Uc;Kd;Cs;Rc _` key records, as Windows Terminal
+does, and a typed Ctrl+/ in a Codex chat is sent the same way. A typed Ctrl+C
+still copies. Implementation: `terminalKeys.ts` and `TerminalPane.tsx`.
+Test: `reveal-sound-ui.mjs`. A live side thread needs a model turn and was not
+part of the automated checks.
+
+## 15. Reasoning effort in New chat
+
+New chat shows Medium, High, XHigh and Max for Codex, Claude, Claude 2 and
+Antigravity. The chat starts with that effort, and the last choice is the next
+default (XHigh at first). The settings route validates `defaultEffort`.
+Test: `effort-ui.mjs`.
+
 ## Checks and source-only build limits
 
-Run the checks listed in the README. `desktop:test:patches:ui` includes the five
-local UI suites that the upstream aggregate script does not cover. UI checks
+Run the checks listed in the README. `desktop:test:patches:ui` includes the
+seven local UI suites that the upstream aggregate script does not cover. UI checks
 use isolated state, fake agents and temporary browser profiles. The theme UI
 suite can time out at the system-theme emulation step; rerun that suite and run
 the later voice/mobile/Workspace suites independently if the aggregate stops.

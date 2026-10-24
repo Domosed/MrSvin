@@ -23,7 +23,7 @@
     "test:assets": "node --test scripts/asset-delivery/test/*.test.mjs",
     "skills:sync": "node scripts/sync-skills.mjs",
     "skills:pack": "node scripts/run-python.mjs scripts/package_skills.py",
-    "desktop:test:patches:ui": "node desktop/service/test/menu-ui.mjs && node desktop/service/test/history-delete-ui.mjs && node desktop/service/test/requests-ui.mjs && node desktop/service/test/claude-profiles-ui.mjs && node desktop/service/test/context-ui.mjs",
+    "desktop:test:patches:ui": "node desktop/service/test/menu-ui.mjs && node desktop/service/test/history-delete-ui.mjs && node desktop/service/test/requests-ui.mjs && node desktop/service/test/claude-profiles-ui.mjs && node desktop/service/test/context-ui.mjs && node desktop/service/test/reveal-sound-ui.mjs && node desktop/service/test/effort-ui.mjs",
     "test:public": "node scripts/check-public-source.mjs"
   },
   "dependencies": {

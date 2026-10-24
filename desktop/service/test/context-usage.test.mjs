@@ -132,6 +132,14 @@ test('a chat total prefers the newer of the status line and the transcript, and 
   result = await usage.read(session);
   assert.deepEqual(result.total, { used: 75910, window: 1000000, percent: 8, at: '2026-10-21T10:02:00Z', compacted: false, source: 'status-line' });
   assert.deepEqual(await usage.read({ ...session, agent: 'shell' }), { supported: false, total: null, breakdown: null, refreshable: false });
+  // A conversation without a reply yet, such as one just started by /clear, has no data; it was not compacted.
+  const cleared = randomUUID();
+  await writeFile(path.join(folder, `${cleared}.json`), JSON.stringify({ window: 1000000, used: null, usedPercentage: null, updatedAt: '2026-10-21T10:03:00Z' }));
+  assert.equal((await usage.read({ ...session, id: 'cleared', nativeId: cleared })).total, null);
+  // After /compact the transcript has the boundary and the status line no usage.
+  await writeFile(transcript, JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: '2026-10-21T10:04:00Z' }) + '\n', { flag: 'a' });
+  await writeFile(path.join(folder, `${nativeId}.json`), JSON.stringify({ window: 1000000, used: null, usedPercentage: null, updatedAt: '2026-10-21T10:04:30Z' }));
+  assert.equal((await usage.read(session)).total.compacted, true);
 
   session.activity = 'working';
   await assert.rejects(usage.refresh('chat'), error => error.status === 409);

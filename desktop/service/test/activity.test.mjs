@@ -38,6 +38,12 @@ test('native activity separates accepted tasks, tool work, final answers and int
   assert.equal(nativeActivity({ type: 'user', message: { content: '[Request interrupted by user]' } }, 'claude').kind, 'turn-interrupted');
   assert.equal(nativeActivity({ type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user for tool use]' }] } }, 'claude').kind, 'turn-interrupted');
   assert.equal(nativeActivity({ type: 'assistant', message: { stop_reason: 'end_turn' } }, 'kimi'), null);
+  // Local commands, their output, ! shell commands and a compaction summary start no turn.
+  for (const content of ['<command-name>/clear</command-name>\n            <command-message>clear</command-message>', '<command-message>codex:setup</command-message>\n<command-name>/codex:setup</command-name>', '<local-command-stdout>Set effort level to high</local-command-stdout>', '<bash-input>dir</bash-input>', '<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>']) {
+    assert.equal(nativeActivity({ type: 'user', message: { content } }, 'claude2'), null, content);
+  }
+  assert.equal(nativeActivity({ type: 'user', isCompactSummary: true, isVisibleInTranscriptOnly: true, message: { content: 'This session is being continued from a previous conversation.' } }, 'claude'), null);
+  assert.equal(nativeActivity({ type: 'user', message: { content: 'Why does <command-name> appear here?' } }, 'claude').kind, 'turn-started');
 });
 
 test('unread answers survive new work and restart; stale acknowledgements and duplicate completions are ignored', async () => {

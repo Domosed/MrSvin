@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Sessions } from '../sessions.mjs';
-import { nativeActivity } from '../native-events.mjs';
+import { claudeTranscript, nativeActivity } from '../native-events.mjs';
 import { answersPrompt, endsWithQuestion, openRequests, requestHookScript, requestsVariable, watchRequests } from '../requests.mjs';
 import { childEnvironment } from '../agents.mjs';
 import { sleep } from '../util.mjs';
@@ -161,6 +162,33 @@ test('a question at the end of an answer replaces the unread mark and survives a
   } finally { await restored?.close(); await sessions.close(); }
 });
 
+test('/clear moves a Claude chat to the new conversation and follows its transcript', async () => {
+  const { repo, sessions, item } = await fixture('claude2');
+  const proc = {}, first = randomUUID(), cleared = randomUUID();
+  try {
+    Object.assign(item, { process: proc, nativeId: first, cwd: repo, waitingFor: 'question', requests: new Map([['prompt', { waiting: 'question' }]]) });
+    // The hook also runs at startup with the chat's own ID, and a stopped launch is ignored.
+    sessions.followClaude(item, proc, first);
+    sessions.followClaude(item, {}, cleared);
+    assert.equal(item.nativeId, first);
+    sessions.followClaude(item, proc, cleared);
+    assert.deepEqual([item.nativeId, item.waitingFor, item.requests.size], [cleared, null, 0]);
+    const transcript = await claudeTranscript(repo, cleared, path.join(repo, '.mrmak', 'claude-2'));
+    await mkdir(path.dirname(transcript), { recursive: true });
+    await writeFile(transcript, JSON.stringify({ type: 'user', message: { content: 'After the clear.' } }) + '\n');
+    for (let attempt = 0; attempt < 60 && item.activity !== 'working'; attempt++) await sleep(50);
+    assert.equal(item.activity, 'working');
+    // Another chat already showing that conversation keeps it.
+    const other = sessions.make({ id: 'chat-b', name: 'Other', agent: 'claude2', open: false, status: 'running', createdAt: new Date().toISOString(), cols: 80, rows: 25 });
+    sessions.items.set(other.id, Object.assign(other, { process: proc, nativeId: first }));
+    sessions.followClaude(other, proc, cleared);
+    assert.equal(other.nativeId, first);
+  } finally {
+    for (const chat of sessions.items.values()) { chat.stopNativeWatch?.(); chat.process = null; }
+    await sessions.close();
+  }
+});
+
 test('the hook records only the tool name, and only for a chat that asked for it', async () => {
   const folder = await temp('claude-requests-');
   const env = {};
@@ -187,6 +215,17 @@ test('the hook records only the tool name, and only for a chat that asked for it
   } finally { stop(); }
   for (let attempt = 0; attempt < 40 && await stat(file).catch(() => null); attempt++) await sleep(25);
   await assert.rejects(stat(file));
+  // /clear runs the session hook with the new session ID; nothing is printed into the model's context.
+  const clearing = openRequests(folder, 'chat-b', {}), sessions = [], id = randomUUID();
+  const stopClear = watchRequests(clearing, () => assert.fail('No prompt was asked'), value => sessions.push(value));
+  try {
+    const result = hook(clearing, { hook_event_name: 'SessionStart', source: 'clear', session_id: id, transcript_path: 'C:/secret/path.jsonl' });
+    assert.deepEqual([result.status, result.stdout], [0, '']);
+    hook(clearing, { hook_event_name: 'SessionStart', source: 'clear', session_id: '../escape' });
+    for (let attempt = 0; attempt < 60 && !sessions.length; attempt++) await sleep(50);
+    assert.deepEqual(sessions, [id]);
+    assert.equal((await readFile(clearing, 'utf8')).includes('secret'), false);
+  } finally { stopClear(); }
   // A chat started by this service never inherits another chat's file.
   process.env[requestsVariable] = file;
   try { assert.equal(childEnvironment()[requestsVariable], undefined); } finally { delete process.env[requestsVariable]; }

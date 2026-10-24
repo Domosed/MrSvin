@@ -4,7 +4,7 @@
   "upstreamCommit": "fbb4004af6eb9226ed8a26518aad78b88406d1b9",
   "upstreamVersion": "0.6.0",
   "sourceVersion": "0.6.0",
-  "includedApplicationPatches": 10,
+  "includedApplicationPatches": 15,
   "starterCards": "The four public upstream samples only",
   "privateWorkspaceImported": false,
   "privateRuntimeImported": false,

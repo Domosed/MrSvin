@@ -3,7 +3,7 @@
 .usage-provider+.usage-provider{margin-top:14px}
 .usage-provider>h3{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0;padding:10px 0 9px;border-top:1px solid #ffffff08;font-size:11px;font-weight:500}.usage-provider>h3 small{font-size:9px;font-weight:400;color:#6f7180}
 .usage-meter{padding:11px 0 12px;border-top:1px solid #ffffff08}
-.usage-meter-label{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;font-size:11px;color:#b9b4c2}.usage-meter-label strong{font:500 12px var(--font-mono);color:#ece6ef}
+.usage-meter-label{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;font-size:11px;color:#b9b4c2}.usage-meter-label strong{font:500 12px var(--font-mono);color:#ece6ef;white-space:nowrap}.usage-meter-label .usage-left{color:#9d99a8;font-weight:400}
 .usage-bar{height:6px;border-radius:3px;background:#ffffff0d;overflow:hidden}.usage-bar>i{display:block;height:100%;border-radius:3px;background:#e8a4b5;transition:width .3s ease}
 .usage-meter.warn .usage-bar>i{background:#deba7e}.usage-meter.high .usage-bar>i{background:#ec8f98}
 .usage-meter small{display:block;margin-top:7px;font-size:10px;color:#80808f}

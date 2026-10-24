@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { CodexUsage } from '../codex-usage.mjs';
+import { CodexUsage, threadStart } from '../codex-usage.mjs';
 
 const fixture = () => mkdtemp(path.join(os.tmpdir(), 'mrmak-codex-usage-'));
 const record = (at, limits) => JSON.stringify({ timestamp: new Date(at).toISOString(), type: 'event_msg', payload: { type: 'token_count', info: null, rate_limits: { limit_id: 'codex', primary: null, secondary: null, plan_type: 'plus', ...limits } } }) + '\n';
@@ -38,6 +38,20 @@ test('Codex usage is the newest recorded limit across recent session files', asy
   assert.equal(usage.cache.get(file), cached);
   await appendFile(file, '\n' + record(now, windows(41, 7, resetsAt)));
   assert.equal((await usage.read(now)).fiveHour.usedPercentage, 41);
+});
+
+test('an open chat resumed from an older Codex thread reports the current limits', async () => {
+  const home = await fixture(), now = Date.now(), resetsAt = Math.floor(now / 1000) + 3600, started = now - 11 * 86400000;
+  // A UUIDv7 thread ID begins with its start time.
+  const id = `${started.toString(16).padStart(12, '0').replace(/^(.{8})(.{4})$/, '$1-$2')}-7891-804e-64441332094f`;
+  assert.equal(threadStart(id), started);
+  assert.ok(Number.isNaN(threadStart('0b9c2d7e-4f1a-4c3b-9e2d-1a2b3c4d5e6f')));
+  await rollout(home, 'recent', record(now - 3600000, windows(20, 5, resetsAt)), now - 3600000);
+  await rollout(home, id, record(now - 60000, windows(70, 11, resetsAt)), started);
+  const usage = new CodexUsage(home);
+  assert.equal((await usage.read(now)).fiveHour.usedPercentage, 20);
+  usage.threads = () => [id];
+  assert.equal((await usage.read(now)).fiveHour.usedPercentage, 70);
 });
 
 test('Codex windows are recognised by length and marked once they reset', async () => {

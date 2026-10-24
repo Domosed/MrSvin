@@ -14,6 +14,12 @@ export function completedTurn(record, agent) {
   return null;
 }
 
+// User records that start no turn: a local command (/clear, /effort, /model …), its
+// output, a ! shell command, and the summary written by a compaction, which
+// Claude Code also runs on its own while the chat is idle.
+const localCommand = /^\s*<(?:command-name|command-message|local-command-(?:stdout|stderr|caveat)|bash-(?:input|stdout|stderr))>/;
+const startsNoTurn = record => record.isCompactSummary || record.isVisibleInTranscriptOnly || typeof record.message?.content === 'string' && localCommand.test(record.message.content);
+
 export function nativeActivity(record, agent) {
   agent = nativeAgent(agent);
   const completed = completedTurn(record, agent);
@@ -31,7 +37,7 @@ export function nativeActivity(record, agent) {
     if (item.type === 'message' && item.role === 'user') return { kind: 'request', reply: true };
   }
   if (agent === 'claude' && !record.isSidechain) {
-    if (record.type === 'user' && !record.isMeta) {
+    if (record.type === 'user' && !record.isMeta && !startsNoTurn(record)) {
       const content = record.message?.content;
       const interrupted = value => typeof value === 'string' && value.startsWith('[Request interrupted by user');
       if (interrupted(content) || Array.isArray(content) && content.some(item => item.type === 'text' && interrupted(item.text))) return { kind: 'turn-interrupted' };

@@ -7,8 +7,10 @@ import { api, onServiceEvent, openWebLink, pickFiles, reportError, sendEvent, up
 import { Icon } from './Icons'
 import type { AgentId } from './types'
 import { decorateTerminal, focusTheme, originalTheme, type TerminalAppearance } from './terminalAppearance'
-import { fileManager, isMac, modKey, modLabel } from './platform'
+import { fileManager, isMac, isWindows, modKey, modLabel } from './platform'
+import { sideKeys, sideThreadKeys, type SideKey } from './terminalKeys'
 import { deferredClipboardWrite, terminalClipboardGate, terminalCopyWindow, type PendingCopy } from './terminalClipboard'
+import { fileUrlPath, pathChecker, terminalPathIcons, terminalPathLinks, type PathKinds } from './terminalPaths'
 
 export default function TerminalPane({ id, agent, fontSize, appearance, optionMeta, onAttachmentStatus }: { id: string; agent: AgentId; fontSize: number; appearance: TerminalAppearance; optionMeta: boolean; onAttachmentStatus: (id: string, text: string) => void }) {
   const host = useRef<HTMLDivElement>(null)
@@ -16,6 +18,7 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
   const terminalRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [footerKeys, setFooterKeys] = useState<SideKey[]>([])
   const statusTimer = useRef(0)
   const uploading = useRef(false)
   const choosing = useRef(false)
@@ -72,11 +75,14 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
   }, [id])
   useEffect(() => {
     if (!host.current) return
+    // Files are shown in their folder; the path may be relative to the chat folder.
+    const revealPath = (path: string) => { api('/reveal', { path, sessionId: id }).catch(reportError) }
     const openLink = (event: MouseEvent, text: string) => {
       event.preventDefault()
       try {
-        const url = new URL(text)
+        const url = new URL(text), file = fileUrlPath(url)
         if (url.protocol === 'https:' || url.protocol === 'http:') openWebLink(url.href, event.ctrlKey || event.metaKey)
+        else if (file) revealPath(file)
       } catch { /* Invalid terminal text is not a web link. */ }
     }
     // Automatic focus leaves a text field the person is typing in elsewhere, such as a tab rename.
@@ -97,6 +103,13 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
       linkHandler: { activate: openLink },
     })
     const fit = new FitAddon(); terminal.loadAddon(fit); terminal.loadAddon(new WebLinksAddon(openLink)); terminal.open(host.current)
+    const checkPaths = pathChecker(paths => api<{ found: PathKinds }>('/paths/check', { sessionId: id, paths }).then(result => result.found))
+    const pathLinks = terminal.registerLinkProvider(terminalPathLinks(terminal, checkPaths, revealPath))
+    // Agent chats show a folder icon after each existing path on screen.
+    const pathIcons = agent === 'shell' ? null : terminalPathIcons(terminal, checkPaths, revealPath)
+    let iconTimer = 0
+    const showIcons = () => { clearTimeout(iconTimer); iconTimer = window.setTimeout(() => void pathIcons?.scan(), 300) }
+    const scrolled = terminal.onScroll(showIcons), resized = terminal.onResize(showIcons)
     terminalRef.current = terminal; fitRef.current = fit
     let sequence = -1
     let ready = false
@@ -147,6 +160,7 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
       if (event.type === 'screen-cleared' && event.id === id) subscribe()
       if (event.type === 'snapshot' && event.session?.id === id) {
         sequence = event.sequence ?? 0
+        pathIcons?.clear()
         terminal.reset()
         terminal.resize(event.session.cols, event.session.rows)
         terminal.write(event.data || '', () => {
@@ -160,6 +174,23 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
         if ((event.sequence || 0) > sequence) { terminal.write(event.data || ''); sequence = event.sequence || 0 }
       }
     })
+    // A Codex side thread (/btw) lists keys in its bottom row; show them as buttons.
+    let footerTimer = 0
+    const readFooter = () => {
+      clearTimeout(footerTimer)
+      footerTimer = window.setTimeout(() => {
+        if (agent !== 'codex') return
+        // The last few non-empty rows on screen; rows below the CLI's output stay blank.
+        const buffer = terminal.buffer.active, rows: string[] = []
+        for (let y = buffer.baseY + terminal.rows - 1; y >= buffer.baseY && rows.length < 4; y--) {
+          const text = buffer.getLine(y)?.translateToString(true) || ''
+          if (text.trim()) rows.push(text)
+        }
+        const found = sideThreadKeys(rows)
+        setFooterKeys(current => current.join() === found.join() ? current : found)
+      }, 150)
+    }
+    const written = terminal.onWriteParsed(() => { readFooter(); showIcons() })
     const input = terminal.onData(data => {
       // Terminal protocol replies intentionally contain ASCII control characters.
       // eslint-disable-next-line no-control-regex
@@ -175,6 +206,12 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
         event.preventDefault(); event.stopPropagation()
         const selection = terminal.getSelection()
         if (event.type === 'keydown' && !event.repeat && selection) navigator.clipboard.writeText(selection).catch(reportError)
+        return false
+      }
+      // Codex switches a side thread with Ctrl+/, which xterm.js would send as Ctrl+Shift+- through ConPTY.
+      if (agent === 'codex' && isWindows && event.ctrlKey && !event.altKey && !event.shiftKey && event.code === 'Slash') {
+        event.preventDefault()
+        if (event.type === 'keydown' && ready) sendEvent({ type: 'input', id, data: sideKeys['ctrl+/'].data })
         return false
       }
       if (event.type !== 'keydown') return true
@@ -209,7 +246,8 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
     const focus = () => focusIdle()
     window.addEventListener('focus', focus)
     return () => {
-      off(); input.dispose(); clipboard.dispose(); dropCopy(); observer.disconnect()
+      off(); input.dispose(); written.dispose(); clearTimeout(footerTimer); clipboard.dispose(); pathLinks.dispose(); dropCopy(); observer.disconnect()
+      scrolled.dispose(); resized.dispose(); clearTimeout(iconTimer); pathIcons?.dispose()
       element.removeEventListener('pointerdown', selectionStart, true); element.removeEventListener('pointerup', selectionEnd, true); element.removeEventListener('keydown', copyGesture, true)
       element.removeEventListener('click', multipleClick, true)
       window.removeEventListener('blur', cancelCopy); document.removeEventListener('visibilitychange', cancelCopy)
@@ -236,6 +274,9 @@ export default function TerminalPane({ id, agent, fontSize, appearance, optionMe
   }, [id])
   return <div ref={area} className={`terminal-area ${appearance === 'focus' ? 'terminal-focus' : ''}`} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'none' }} onDrop={event => { event.preventDefault(); event.stopPropagation(); setDragging(false); reportError(`Drop original files or folders from ${fileManager} into Mr. Свин Desktop. Paste clipboard images with ${modLabel}V.`) }}>
     <div ref={host} className="terminal-host" aria-label="Interactive agent terminal" />
+    {footerKeys.length > 0 && <div className="terminal-keys" role="toolbar" aria-label="Side thread keys">
+      {footerKeys.map(key => <button key={key} type="button" onMouseDown={event => event.preventDefault()} onClick={() => { sendEvent({ type: 'input', id, data: sideKeys[key].data }); terminalRef.current?.focus() }}>{sideKeys[key].label}<kbd>{key === 'f2' ? 'F2' : key.replace('ctrl', 'Ctrl').replace(/\+c$/, '+C')}</kbd></button>)}
+    </div>}
     {dragging && <div className="terminal-drop"><Icon name="attach" size={30} /><strong>Drop to insert paths</strong><span>Files, folders and images</span></div>}
   </div>
 }

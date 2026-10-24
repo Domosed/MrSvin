@@ -1,7 +1,7 @@
 # MrSvin Workspace
 
 A source fork of [Mr. Mak Workspace](https://github.com/witnesstodark/mr-mak-workspace)
-with ten application patches, based on Mr. Mak 0.6.0. It keeps the two desktop
+with fifteen application patches, based on Mr. Mak 0.6.0. It keeps the two desktop
 windows, real CLI agent terminals, Workspace reports and optional mobile access
 through Tailscale.
 
@@ -28,6 +28,11 @@ Workspace Yours and Arachne Character Lab.
   meters, History and native transcripts.
 - A context meter in each Claude and Codex chat header, with Claude Code's
   `/context` breakdown by category and a refresh button.
+- Claude chats that follow `/clear`, and no busy look after local commands.
+- Folder buttons that show mentioned files in Explorer, in answers and the terminal.
+- Quiet tones when a chat finishes or waits for an answer.
+- Buttons for the keys of a Codex side thread (`/btw`).
+- A reasoning effort choice in New chat.
 
 See [PATCHES.md](PATCHES.md) for the behavior, constraints and tests of each patch.
 Upstream 0.6.0 features are retained: the Conversation view, tab groups,

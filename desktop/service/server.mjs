@@ -13,7 +13,7 @@ import { inventory } from './agents.mjs';
 import { Attachments, attachmentText, MAX_IMAGE_BYTES } from './attachments.mjs';
 import { ContextLibrary } from './context.mjs';
 import { groupLabel, taskTitle } from './titles.mjs';
-import { taskEffort } from './effort.mjs';
+import { taskEffort, workerEfforts } from './effort.mjs';
 import { Workspace, localDay, metadataPatch } from './workspace.mjs';
 import { CardDocuments } from './card-documents.mjs';
 import { QuickActions } from './quick-actions.mjs';
@@ -42,6 +42,11 @@ import { chatCommands } from './chat-commands.mjs';
 import { ContextUsage } from './context-usage.mjs';
 
 const listen = server => new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`)); });
+// A file or folder path written in a chat, possibly relative to the chat's folder.
+const chatPath = value => {
+  if (typeof value !== 'string' || !value.trim() || value.length > 1024 || /[\x00-\x1f]/.test(value)) throw new Error('Choose a local file or folder.');
+  return value.trim();
+};
 
 export async function createService({ repo, uiDir, stateDir, token = secret(), native = () => {}, restoreSessions = false, mcpOptions, mobileOptions, claudeUsageOptions, codexHome, usageAlerts = false, openLink = openInAlternateBrowser, restartApp, deleteNative }) {
   repo = await realpath(repo);
@@ -66,6 +71,7 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   });
   if (usageAlerts) alerts.start();
   const sessions = await new Sessions(repo, stateDir, { claudeUsage, claude2Usage }).init();
+  codexUsage.threads = () => [...sessions.items.values()].filter(item => item.agent === 'codex' && item.open && item.nativeId).map(item => item.nativeId);
   const transcripts = new ConversationTranscripts(stateDir);
   const contextUsage = new ContextUsage({ sessions, stateDir, folders: { claude: claudeUsage.contextDir, claude2: claude2Usage.contextDir } });
   const conversationMedia = new ConversationMedia();
@@ -73,7 +79,7 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
   const environment = parseEnv(await readFile(path.join(repo, '.env'), 'utf8').catch(() => ''));
   const settingsPath = path.join(stateDir, 'settings.json');
   const savedSettings = await readJson(settingsPath, null);
-  let settings = { defaultAgent: 'codex', defaultBypass: false, coordinatorModel: environment.MRMAK_COORDINATOR_MODEL?.trim() || null, terminalFontSize: 13, terminalAppearance: 'original', workspaceTheme: 'dark', coordinatorEffort: 'medium', voiceName: 'cedar', voiceStyle: defaultVoiceStyle, handoffAfter: 40, groupTabsByProject: false, systemEvents: 'compact', ...savedSettings };
+  let settings = { defaultAgent: 'codex', defaultBypass: false, coordinatorModel: environment.MRMAK_COORDINATOR_MODEL?.trim() || null, terminalFontSize: 13, terminalAppearance: 'original', workspaceTheme: 'dark', coordinatorEffort: 'medium', voiceName: 'cedar', voiceStyle: defaultVoiceStyle, handoffAfter: 40, groupTabsByProject: false, systemEvents: 'compact', chatSound: true, chatSoundVolume: 30, ...savedSettings };
   if (await dictation.initializeProvider?.(settings, savedSettings !== null)) await saveJson(settingsPath, settings);
   dictation.providerChoice = () => settings.transcribeProvider || null;
   const chooseDictation = async provider => {
@@ -324,11 +330,14 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
         if (method === 'POST' && url.pathname === '/api/settings') {
           if (inventory().some(item => item.id === data.defaultAgent)) settings.defaultAgent = data.defaultAgent;
           if (typeof data.defaultBypass === 'boolean') settings.defaultBypass = data.defaultBypass;
+          if (workerEfforts.includes(data.defaultEffort)) settings.defaultEffort = data.defaultEffort;
           if (Number.isInteger(data.terminalFontSize) && data.terminalFontSize >= 10 && data.terminalFontSize <= 24) settings.terminalFontSize = data.terminalFontSize;
           if (['focus', 'original'].includes(data.terminalAppearance)) settings.terminalAppearance = data.terminalAppearance;
           if (typeof data.terminalOptionMeta === 'boolean') settings.terminalOptionMeta = data.terminalOptionMeta;
           if (Number.isInteger(data.handoffAfter) && (data.handoffAfter === 0 || (data.handoffAfter >= 10 && data.handoffAfter <= 500))) settings.handoffAfter = data.handoffAfter;
           if (['full', 'compact', 'hidden'].includes(data.systemEvents)) settings.systemEvents = data.systemEvents;
+          if (typeof data.chatSound === 'boolean') settings.chatSound = data.chatSound;
+          if (Number.isInteger(data.chatSoundVolume) && data.chatSoundVolume >= 1 && data.chatSoundVolume <= 100) settings.chatSoundVolume = data.chatSoundVolume;
           if (['dark', 'light', 'system'].includes(data.workspaceTheme)) settings.workspaceTheme = data.workspaceTheme;
           if (['medium', 'high'].includes(data.coordinatorEffort)) settings.coordinatorEffort = data.coordinatorEffort;
           if (['cedar', 'marin'].includes(data.voiceName)) settings.voiceName = data.voiceName;
@@ -421,8 +430,28 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
           native({ type: 'window', action: data.action, window: data.window, value: !!data.value }); return json(response, 200, { requested: true });
         }
         if (method === 'POST' && url.pathname === '/api/reveal') {
-          const file = await realpath(path.resolve(data.path));
-          native({ type: 'reveal', path: file }); return json(response, 200, { requested: true });
+          // A path from a chat may be relative to its folder. Explorer selects a file in its folder; for a
+          // path that no longer exists it opens the nearest folder that does.
+          const base = typeof data.sessionId === 'string' ? sessions.get(data.sessionId).cwd : process.cwd();
+          let target = path.resolve(base, chatPath(data.path)), file = null;
+          for (let depth = 0; !file && depth < 40; depth++) {
+            file = await realpath(target).catch(() => null);
+            if (file || path.dirname(target) === target) break;
+            target = path.dirname(target);
+          }
+          if (!file) throw new Error('This file or folder does not exist.');
+          native({ type: 'reveal', path: file }); return json(response, 200, { requested: true, path: file });
+        }
+        // Which of the paths an answer mentions exist, for its "show in folder" buttons.
+        if (method === 'POST' && url.pathname === '/api/paths/check') {
+          const base = typeof data.sessionId === 'string' ? sessions.get(data.sessionId).cwd : repo;
+          const paths = Array.isArray(data.paths) ? data.paths.filter(item => typeof item === 'string').slice(0, 300) : [];
+          const found = {};
+          await Promise.all(paths.map(async item => {
+            const info = await Promise.resolve().then(() => stat(path.resolve(base, chatPath(item)))).catch(() => null);
+            if (info) found[item] = info.isDirectory() ? 'folder' : 'file';
+          }));
+          return json(response, 200, { found });
         }
         if (method === 'POST' && url.pathname === '/api/open-link') {
           const keys = parseEnv(await readFile(path.join(repo, '.env'), 'utf8').catch(() => ''));

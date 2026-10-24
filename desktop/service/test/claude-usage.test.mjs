@@ -61,7 +61,8 @@ test('Claude chats get the usage status line unless the user configured their ow
   const settings = usage.prepare(project, env);
   assert.equal(settings, path.join(stateDir, 'claude-statusline-settings.json'));
   const { statusLine: configured, hooks } = JSON.parse(await readFile(settings, 'utf8'));
-  assert.deepEqual(hooks, { PermissionRequest: [{ hooks: [{ type: 'command', command: `node '${requestHookScript.replaceAll('\\', '/')}'`, timeout: 10 }] }] });
+  const hook = [{ hooks: [{ type: 'command', command: `node '${requestHookScript.replaceAll('\\', '/')}'`, timeout: 10 }] }];
+  assert.deepEqual(hooks, { PermissionRequest: hook, SessionStart: hook });
   assert.equal(configured.type, 'command');
   assert.equal(configured.command, `node '${statusLineScript.replaceAll('\\', '/')}' '${usage.file.replaceAll('\\', '/')}'`);
   assert.equal(configured.command.includes('\\'), false);

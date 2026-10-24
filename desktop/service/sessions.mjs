@@ -194,7 +194,7 @@ export class Sessions extends EventEmitter {
     const proc = pty.spawn(command.file, command.args, ptyOptions({ cwd: session.cwd, env, cols: session.cols, rows: session.rows }));
     session.process = proc;
     session.stopRequests?.();
-    session.stopRequests = requests ? watchRequests(requests, (tool, at) => this.nativeEvent(session, { kind: 'request', prompt: tool, at })) : null;
+    session.stopRequests = requests ? watchRequests(requests, (tool, at) => this.nativeEvent(session, { kind: 'request', prompt: tool, at }), id => this.followClaude(session, proc, id)) : null;
     session.deviceReplies?.dispose();
     // Inactive tabs still have a terminal: answer device queries without needing
     // a visible renderer. The UI suppresses its duplicate protocol replies.
@@ -354,6 +354,18 @@ export class Sessions extends EventEmitter {
     }
     if (session.agent !== 'codex' || session.nativeId) return;
     this.bindNative(session, await findCodexChat(session, { full: true }));
+  }
+
+  // /clear continues a Claude chat in a new conversation with its own transcript;
+  // the session hook reports its ID. Follow it, as watchNative follows a Codex /new.
+  followClaude(session, proc, id) {
+    if (session.process !== proc || !/^[a-f0-9-]{36}$/i.test(id) || id === session.nativeId) return;
+    if ([...this.items.values()].some(item => item !== session && item.agent === session.agent && item.nativeId === id)) return;
+    session.nativeId = id; session.waitingFor = null; session.requests?.clear();
+    this.changed(session);
+    claudeTranscript(session.cwd, id, claudeConfigDir(session.agent, this)).then(file => {
+      if (session.process === proc && session.nativeId === id) this.watchNative(session, file);
+    }).catch(() => {});
   }
 
   bindAntigravity(session, id) {
