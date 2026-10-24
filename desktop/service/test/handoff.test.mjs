@@ -40,7 +40,7 @@ test('a first message is one safe argument, placed before Claude\'s variadic --a
 
 function fixture(reply) {
   const sessions = new EventEmitter(), inputs = [], created = [], opened = [], changes = [];
-  const session = { id: 'old', agent: 'claude', name: 'Dream Game Combat', cwd: '/projects/game', bypass: false, effort: 'xhigh', status: 'running', activity: 'idle', completionVersion: 3, process: {} };
+  const session = { id: 'old', agent: 'claude', name: 'Dream Game Combat', cwd: '/projects/game', bypass: false, effort: 'xhigh', model: 'opus', status: 'running', activity: 'idle', completionVersion: 3, process: {} };
   sessions.get = () => session;
   sessions.input = (id, text, options) => inputs.push({ id, text, options });
   sessions.create = async options => { created.push(options); return { id: 'new' }; };
@@ -65,7 +65,7 @@ test('accepting a handoff asks the chat, saves its summary and opens a new chat 
   assert.equal(path.dirname(job.file), path.join(repo, 'inbox', 'handoffs'));
   assert.match(await readFile(job.file, 'utf8'), /^# Handoff\n## Next\nAdd parry timing\n/);
   assert.equal(created.length, 1);
-  assert.deepEqual({ ...created[0], initialPrompt: undefined }, { agent: 'claude', cwd: session.cwd, bypass: false, effort: 'xhigh', name: 'Dream Game Combat · continued', initialPrompt: undefined, readDir: path.join(repo, 'inbox', 'handoffs') });
+  assert.deepEqual({ ...created[0], initialPrompt: undefined }, { agent: 'claude', cwd: session.cwd, bypass: false, effort: 'xhigh', model: 'opus', name: 'Dream Game Combat · continued', initialPrompt: undefined, readDir: path.join(repo, 'inbox', 'handoffs') });
   assert.ok(created[0].initialPrompt.includes(job.file));
   assert.equal(initialPromptArgument(created[0].initialPrompt), created[0].initialPrompt);
 });

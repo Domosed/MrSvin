@@ -48,6 +48,11 @@ function NewChat({ close }: { close: () => void }) {
   const [cwd, setCwd] = useState(state.repo)
   const [bypass, setBypass] = useState(state.settings.defaultBypass)
   const [effort, setEffort] = useState<Effort>(state.settings.defaultEffort || 'xhigh')
+  // Each agent remembers its own model; an empty choice keeps the CLI's setting.
+  const [models, setModels] = useState(state.settings.defaultModels || {})
+  const model = models[agent] || ''
+  const offered = state.agents.find(item => item.id === agent)?.models || []
+  const modelOptions = model && !offered.some(item => item.id === model) ? [{ id: model, label: model }, ...offered] : offered
   const [resumeId, setResumeId] = useState('')
   const [group, setGroup] = useState<string | null>(() => state.sessions.find(item => item.id === state.selectedId)?.group || null)
   const [busy, setBusy] = useState(false)
@@ -56,8 +61,9 @@ function NewChat({ close }: { close: () => void }) {
     event.preventDefault(); setBusy(true); setError('')
     try {
       const reasoning = effortAgents.includes(agent) ? effort : undefined
-      const session = await api<ChatSession>('/sessions', { agent, name: name.trim() || undefined, cwd, bypass, effort: reasoning, resumeId: resumeId.trim() || undefined, group: group || undefined })
-      await api('/settings', { defaultAgent: agent, defaultBypass: bypass, ...(reasoning && { defaultEffort: reasoning }) })
+      const chosen = modelOptions.length ? model : undefined
+      const session = await api<ChatSession>('/sessions', { agent, name: name.trim() || undefined, cwd, bypass, effort: reasoning, model: chosen || undefined, resumeId: resumeId.trim() || undefined, group: group || undefined })
+      await api('/settings', { defaultAgent: agent, defaultBypass: bypass, ...(reasoning && { defaultEffort: reasoning }), ...(chosen !== undefined && { modelAgent: agent, defaultModel: chosen }) })
       selectChat(session.id); close()
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); setBusy(false) }
   }
@@ -70,6 +76,8 @@ function NewChat({ close }: { close: () => void }) {
     <ProjectPicker cwd={cwd} choose={setCwd} />
     <label className="desk-field">Working folder<input value={cwd} onChange={event => setCwd(event.target.value)} required spellCheck={false} /></label>
     <div className="desk-field group-field"><span>Group <small>Tabs of a group sit together</small></span><GroupPicker value={group} groups={groupNames(state.sessions)} onChange={setGroup} /></div>
+    {modelOptions.length > 0 && <label className="desk-field model-field"><span>Model <small>Change it later with /model in the chat</small></span>
+      <select aria-label="Model" value={model} onChange={event => setModels(current => ({ ...current, [agent]: event.target.value }))}><option value="">Default · CLI setting</option>{modelOptions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
     {effortAgents.includes(agent) && <div className="desk-field effort-field"><span>Reasoning effort <small>Change it later with /effort{agent === 'codex' ? ' or /model' : ''} in the chat</small></span>
       <div role="group" aria-label="Reasoning effort">{efforts.map(([value, label]) => <button type="button" key={value} aria-pressed={effort === value} onClick={() => setEffort(value)}>{label}</button>)}</div></div>}
     {agent !== 'shell' && <><label className="desk-check"><input type="checkbox" checked={bypass} onChange={event => setBypass(event.target.checked)} /><span>{agent === 'opencode' ? 'Auto-approve permission prompts' : 'Bypass agent permission prompts'}<small>{agent === 'opencode' ? 'Explicit deny rules in OpenCode still apply.' : `Same ${isMac ? 'macOS' : isWindows ? 'Windows' : 'user'} account and file access as your usual terminal.`}</small></span></label><details className="desk-details"><summary>Resume an existing CLI conversation</summary><p>For a conversation started outside Mr. Свин, copy its ID from your CLI's session details or resume picker. Chats created here return automatically.</p><label className="desk-field">Native session ID<input value={resumeId} onChange={event => setResumeId(event.target.value)} placeholder="Optional session ID" /></label></details></>}

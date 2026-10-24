@@ -52,7 +52,7 @@ export class Handoffs {
     await writeFile(file, `${text}\n\n---\nFrom the ${session.agent === 'codex' ? 'Codex' : session.agent === 'claude2' ? 'Claude 2' : 'Claude Code'} chat "${session.name}" in ${session.cwd}, ${now.toISOString()}.\n`, 'utf8');
     this.update(id, { status: 'opening', file });
     const next = await this.sessions.create({
-      agent: session.agent, cwd: session.cwd, bypass: session.bypass, effort: session.effort,
+      agent: session.agent, cwd: session.cwd, bypass: session.bypass, effort: session.effort, model: session.model,
       name: englishTitle(`${session.name.replace(/ · continued$/, '')} · continued`, session.name),
       initialPrompt: `Continue the work from the previous chat '${session.name.replace(/"/g, "'")}'. First read its handoff: \`${file}\`. Then state the next step in one sentence and continue.`,
       readDir: folder,

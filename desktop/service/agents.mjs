@@ -91,7 +91,7 @@ export function codexSupportsNoDaemon(env = process.env) {
   return codexHelp.get(key);
 }
 
-export function terminalCommand(agent, { bypass = false, resumeId, nativeId, effort, opencodeMajor = 1, antigravityLog, initialPrompt, readDir, noDaemon = false, settings } = {}) {
+export function terminalCommand(agent, { bypass = false, resumeId, nativeId, effort, model, opencodeMajor = 1, antigravityLog, initialPrompt, readDir, noDaemon = false, settings } = {}) {
   if (!AGENTS.some(item => item.id === agent)) throw new Error('Unknown agent');
   resumeId = nativeConversationId(resumeId); nativeId = nativeConversationId(nativeId);
   initialPrompt = initialPromptArgument(initialPrompt);
@@ -109,6 +109,7 @@ export function terminalCommand(agent, { bypass = false, resumeId, nativeId, eff
     // not be matched to its rollout. Run Codex in this terminal's process instead.
     if (noDaemon) args.push('--no-daemon');
     if (bypass) args.push('--dangerously-bypass-approvals-and-sandbox');
+    if (model) args.push('--model', model);
     if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
     // Codex reads outside its working folder by default.
     if (initialPrompt) args.push(initialPrompt);
@@ -118,6 +119,7 @@ export function terminalCommand(agent, { bypass = false, resumeId, nativeId, eff
     if (resumeId) args.push('--resume', resumeId);
     else if (nativeId) args.push('--session-id', nativeId);
     if (bypass) args.push('--dangerously-skip-permissions');
+    if (model) args.push('--model', model);
     if (effort) args.push('--effort', effort);
     if (settings) args.push('--settings', settings);
     if (readDir) args.push('--add-dir', readDir);
