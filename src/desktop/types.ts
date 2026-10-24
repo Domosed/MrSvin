@@ -1,9 +1,11 @@
 export type AgentId = 'codex' | 'claude' | 'claude2' | 'antigravity' | 'opencode' | 'kimi' | 'shell'
 export const isClaude = (agent: AgentId) => agent === 'claude' || agent === 'claude2'
-export interface AgentInfo { id: AgentId; label: string; color: string; available: boolean; subscription: boolean }
+export interface AgentModel { id: string; label: string }
+export interface AgentInfo { id: AgentId; label: string; color: string; available: boolean; subscription: boolean; models?: AgentModel[] }
 export interface ChatSession {
   id: string; name: string; agent: AgentId; cwd: string; bypass: boolean
   effort?: 'medium' | 'high' | 'xhigh' | 'max'
+  model?: string
   status: 'starting' | 'running' | 'stopped' | 'exited'; createdAt: string
   lastOutputAt: string | null; lastInputAt: string | null; nativeId: string | null
   attention: boolean; cols: number; rows: number; exitCode?: number | null
@@ -24,7 +26,7 @@ export interface RecentProject { path: string; name: string; sources: ('workspac
 export interface Handoff { status: 'summarizing' | 'opening' | 'done' | 'failed'; error?: string | null; sessionId?: string | null; file?: string | null; at: string }
 export interface Notice { id: string; sessionId: string; name: string; kind: string; text: string; at: string }
 export interface Operation { id: string; text: string; status: string; result?: string; at: string; images?: string[] }
-export interface Settings { defaultAgent: AgentId; transcribeProvider?: 'local' | 'openai' | 'openrouter' | 'off'; defaultBypass: boolean; terminalFontSize?: number; terminalAppearance?: 'focus' | 'original'; workspaceTheme?: 'dark' | 'light' | 'system'; workspaceRoute?: string | null; selectedId?: string | null; coordinatorEffort?: 'medium' | 'high'; voiceName?: string; voiceStyle?: string; handoffAfter?: number; terminalOptionMeta?: boolean; chatSound?: boolean; chatSoundVolume?: number; defaultEffort?: ChatSession['effort']; collapsedGroups?: string[]; groupColors?: Record<string, string>; systemEvents?: SystemEventsMode }
+export interface Settings { defaultAgent: AgentId; transcribeProvider?: 'local' | 'openai' | 'openrouter' | 'off'; defaultBypass: boolean; terminalFontSize?: number; terminalAppearance?: 'focus' | 'original'; workspaceTheme?: 'dark' | 'light' | 'system'; workspaceRoute?: string | null; selectedId?: string | null; coordinatorEffort?: 'medium' | 'high'; voiceName?: string; voiceStyle?: string; handoffAfter?: number; terminalOptionMeta?: boolean; chatSound?: boolean; chatSoundVolume?: number; defaultEffort?: ChatSession['effort']; defaultModels?: Partial<Record<AgentId, string>>; collapsedGroups?: string[]; groupColors?: Record<string, string>; systemEvents?: SystemEventsMode }
 export type SystemEventsMode = 'full' | 'compact' | 'hidden'
 export interface VoiceOwner { clientId: string; surface: 'chats' | 'workspace' }
 export interface FileEntry { name: string; path: string; directory: boolean; size: number; modifiedAt: string | null }

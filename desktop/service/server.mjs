@@ -14,6 +14,7 @@ import { Attachments, attachmentText, MAX_IMAGE_BYTES } from './attachments.mjs'
 import { ContextLibrary } from './context.mjs';
 import { groupLabel, taskTitle } from './titles.mjs';
 import { taskEffort, workerEfforts } from './effort.mjs';
+import { agentModels, modelAgents, validModel } from './models.mjs';
 import { Workspace, localDay, metadataPatch } from './workspace.mjs';
 import { CardDocuments } from './card-documents.mjs';
 import { QuickActions } from './quick-actions.mjs';
@@ -252,7 +253,7 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
         if (method === 'POST' && url.pathname === '/api/mobile/revoke') return json(response, 200, await mobile.revoke(data.id));
         if (method === 'GET' && url.pathname === '/api/bootstrap') {
           const keys = parseEnv(await readFile(path.join(repo, '.env'), 'utf8').catch(() => ''));
-          return json(response, 200, { repo, contentBase: `${files.origin}/view/${files.repoGrant}`, agents: inventory(), sessions: sessions.list(), settings, selectedId, notices, coordinator: coordinator.state, voice: { configured: !!(keys.OPENAI_API_KEY || keys.OPENAI_KEY || process.env.OPENAI_API_KEY), owner: voiceOwner }, voiceHistory, operations: [...coordinator.operations.values(), ...quick.operations.values()].sort((a, b) => a.at.localeCompare(b.at)).slice(-30) });
+          return json(response, 200, { repo, contentBase: `${files.origin}/view/${files.repoGrant}`, agents: inventory().map(item => ({ ...item, models: agentModels(item.id) })), sessions: sessions.list(), settings, selectedId, notices, coordinator: coordinator.state, voice: { configured: !!(keys.OPENAI_API_KEY || keys.OPENAI_KEY || process.env.OPENAI_API_KEY), owner: voiceOwner }, voiceHistory, operations: [...coordinator.operations.values(), ...quick.operations.values()].sort((a, b) => a.at.localeCompare(b.at)).slice(-30) });
         }
         if (method === 'GET' && url.pathname === '/api/workspace') return json(response, 200, await registry());
         if (method === 'POST' && url.pathname === '/api/workspace/cards') return json(response, 201, await cards.create(data));
@@ -331,6 +332,8 @@ export async function createService({ repo, uiDir, stateDir, token = secret(), n
           if (inventory().some(item => item.id === data.defaultAgent)) settings.defaultAgent = data.defaultAgent;
           if (typeof data.defaultBypass === 'boolean') settings.defaultBypass = data.defaultBypass;
           if (workerEfforts.includes(data.defaultEffort)) settings.defaultEffort = data.defaultEffort;
+          // An empty model is the CLI's own setting.
+          if (modelAgents.includes(data.modelAgent) && (data.defaultModel === '' || validModel(data.defaultModel))) settings.defaultModels = { ...settings.defaultModels, [data.modelAgent]: data.defaultModel };
           if (Number.isInteger(data.terminalFontSize) && data.terminalFontSize >= 10 && data.terminalFontSize <= 24) settings.terminalFontSize = data.terminalFontSize;
           if (['focus', 'original'].includes(data.terminalAppearance)) settings.terminalAppearance = data.terminalAppearance;
           if (typeof data.terminalOptionMeta === 'boolean') settings.terminalOptionMeta = data.terminalOptionMeta;

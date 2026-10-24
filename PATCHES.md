@@ -257,7 +257,14 @@ part of the automated checks.
 New chat shows Medium, High, XHigh and Max for Codex, Claude, Claude 2 and
 Antigravity. The chat starts with that effort, and the last choice is the next
 default (XHigh at first). The settings route validates `defaultEffort`.
-Test: `effort-ui.mjs`.
+
+Above it, a Model list for Codex, Claude and Claude 2. Claude offers the
+`--model` aliases Fable, Opus, Sonnet and Haiku, which follow the latest model of
+each family. Codex offers the visible models from its own `models_cache.json`
+and starts with `--model`. Default passes no flag and keeps the CLI's setting.
+Each agent remembers its last model (`defaultModels`); a resume or handoff keeps
+the chat's model. `models.mjs` provides the lists and name validation.
+Tests: `effort-ui.mjs`, `models.test.mjs`.
 
 ## Checks and source-only build limits
 
